@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.2
+// @version      1.0.3
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -122,7 +122,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel("Nihondex Plus");
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.3"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {

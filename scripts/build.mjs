@@ -1,6 +1,8 @@
 import {readFileSync} from 'node:fs';
 import {build, context} from 'esbuild';
 
+const {version} = JSON.parse(readFileSync('package.json', 'utf8'));
+
 const ENTRIES = [
     {entry: 'src/main.js', header: 'src/header.js', outfile: 'dist/nihondex-plus.user.js'},
 ];
@@ -12,6 +14,7 @@ const targets = ENTRIES.map(({entry, header, outfile}) => ({
     format: 'iife',
     target: 'firefox115',
     charset: 'utf8',
+    define: {__VERSION__: JSON.stringify(version)},
     legalComments: 'none',
     banner: {js: readFileSync(header, 'utf8').trimEnd()},
 }));
