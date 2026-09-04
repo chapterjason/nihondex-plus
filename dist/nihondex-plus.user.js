@@ -1216,7 +1216,6 @@
         processed: new TrackingProcessor(log).process()
       };
       this.trackings.push(tracking);
-      this.dispatchEvent(new CustomEvent("tracking", { detail: tracking }));
     }
     onCard(card) {
       this.finish();
@@ -1229,6 +1228,65 @@
     }
     onUnload() {
       this.finish();
+      this.dispatchEvent(new CustomEvent("tracking", { detail: this.trackings }));
+      this.trackings = [];
+    }
+  };
+
+  // src/page/practice-kana/practice-kana-result-page.js
+  var SECONDS = /([\d.]+)\s*s/;
+  var COUNT = /×\s*(\d+)/;
+  var PracticeKanaResultPage = class extends SubPage {
+    constructor() {
+      super(".stat-pill");
+      this.details = new ButtonElementReference(".kana-practice-page button:has(.fa-chevron-down)");
+      this.continueButton = new ButtonElementReference(".kana-practice-page button.btn-primary.w-full");
+      this.reported = false;
+    }
+    getDetails() {
+      const button = this.details.get();
+      if (button === null || button.parentElement.children.length < 2) {
+        return null;
+      }
+      return button.parentElement.children[1];
+    }
+    getIncorrect(details) {
+      return [...details.querySelectorAll(".rounded-xl.p-3.text-center")].filter((entry) => entry.querySelector("span") !== null).map((entry) => ({
+        kana: entry.firstElementChild.textContent.trim(),
+        romaji: entry.querySelector("span").textContent.trim(),
+        count: Number(entry.textContent.match(COUNT)?.[1] ?? 0)
+      }));
+    }
+    getResults(details) {
+      return [...details.querySelectorAll(".group")].map((entry) => ({
+        kana: entry.querySelector(".kana-display"),
+        seconds: entry.textContent.match(SECONDS)
+      })).filter(({ kana, seconds }) => kana !== null && seconds !== null).map(({ kana, seconds }) => ({
+        kana: kana.textContent.trim(),
+        seconds: Number(seconds[1])
+      }));
+    }
+    check() {
+      super.check();
+      if (!this.loaded || this.reported) {
+        return;
+      }
+      const details = this.getDetails();
+      if (details === null) {
+        this.details.click();
+        return;
+      }
+      this.reported = true;
+      this.dispatchEvent(new CustomEvent("result", {
+        detail: {
+          incorrect: this.getIncorrect(details),
+          results: this.getResults(details)
+        }
+      }));
+      this.continueButton.click();
+    }
+    onLoad() {
+      this.reported = false;
     }
   };
 
@@ -1239,6 +1297,21 @@
       this.hiddenStyles = new HiddenStyles();
       this.setupPage = new PracticeKanaSetupPage();
       this.gamePage = new PracticeKanaGamePage();
+      this.resultPage = new PracticeKanaResultPage();
+      this.trackings = [];
+      this.gamePage.addEventListener("tracking", (event) => this.onTracking(event.detail));
+      this.resultPage.addEventListener("result", (event) => this.onResult(event.detail));
+    }
+    onTracking(trackings) {
+      this.trackings = trackings;
+    }
+    onResult(result) {
+      const results = this.trackings.map((tracking, index) => ({
+        ...tracking,
+        nihondex: result.results[index]
+      }));
+      this.trackings = [];
+      console.log(results);
     }
     onLoad() {
       this.reference.addClass(NO_ANIMATIONS_CLASS);

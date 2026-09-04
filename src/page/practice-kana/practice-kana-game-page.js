@@ -171,8 +171,6 @@ export class PracticeKanaGamePage extends SubPage {
         };
 
         this.trackings.push(tracking);
-
-        this.dispatchEvent(new CustomEvent('tracking', {detail: tracking}));
     }
 
     onCard(card) {
@@ -189,5 +187,9 @@ export class PracticeKanaGamePage extends SubPage {
 
     onUnload() {
         this.finish();
+
+        this.dispatchEvent(new CustomEvent('tracking', {detail: this.trackings}));
+
+        this.trackings = [];
     }
 }
