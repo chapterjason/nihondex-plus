@@ -11,7 +11,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
-    "server": "node scripts/server.mjs"
+    "results": "node scripts/result-server.mjs",
+    "change-tracking": "node scripts/change-tracking-server.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2"
