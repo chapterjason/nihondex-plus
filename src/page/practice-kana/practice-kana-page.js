@@ -5,6 +5,7 @@ import {HiddenStyles} from '../../util/hidden-styles.js';
 import {PracticeKanaGamePage} from './practice-kana-game-page.js';
 import {PracticeKanaResultPage} from './practice-kana-result-page.js';
 import {stamp} from '../../util/stamp.js';
+import {id} from '../../util/id.js';
 
 export class PracticeKanaPage extends Page {
     constructor() {
@@ -17,6 +18,7 @@ export class PracticeKanaPage extends Page {
 
         this.trackings = [];
         this.startedAt = null;
+        this.session = null;
 
         this.setupPage.addEventListener('start', () => this.onStart());
         this.gamePage.addEventListener('tracking', (event) => this.onTracking(event.detail));
@@ -25,6 +27,7 @@ export class PracticeKanaPage extends Page {
 
     onStart() {
         this.startedAt = new Date();
+        this.session = id();
     }
 
     onTracking(trackings) {
@@ -34,6 +37,7 @@ export class PracticeKanaPage extends Page {
     onResult(result) {
         const finishedAt = new Date();
         const startedAt = this.startedAt ?? finishedAt;
+        const session = this.session ?? id();
 
         const results = this.trackings.map((tracking, index) => ({
             ...tracking,
@@ -42,8 +46,10 @@ export class PracticeKanaPage extends Page {
 
         this.trackings = [];
         this.startedAt = null;
+        this.session = null;
 
         console.log({
+            session,
             started: stamp(startedAt),
             finished: stamp(finishedAt),
             results,

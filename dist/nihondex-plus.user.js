@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.10
+// @version      1.0.11
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -126,7 +126,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.10"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.11"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -1344,6 +1344,11 @@
     }
   };
 
+  // src/util/id.js
+  function id() {
+    return crypto.randomUUID();
+  }
+
   // src/page/practice-kana/practice-kana-page.js
   var PracticeKanaPage = class extends Page {
     constructor() {
@@ -1354,12 +1359,14 @@
       this.resultPage = new PracticeKanaResultPage();
       this.trackings = [];
       this.startedAt = null;
+      this.session = null;
       this.setupPage.addEventListener("start", () => this.onStart());
       this.gamePage.addEventListener("tracking", (event) => this.onTracking(event.detail));
       this.resultPage.addEventListener("result", (event) => this.onResult(event.detail));
     }
     onStart() {
       this.startedAt = /* @__PURE__ */ new Date();
+      this.session = id();
     }
     onTracking(trackings) {
       this.trackings = trackings;
@@ -1367,13 +1374,16 @@
     onResult(result) {
       const finishedAt = /* @__PURE__ */ new Date();
       const startedAt = this.startedAt ?? finishedAt;
+      const session = this.session ?? id();
       const results = this.trackings.map((tracking, index) => ({
         ...tracking,
         nihondex: result.results[index]
       }));
       this.trackings = [];
       this.startedAt = null;
+      this.session = null;
       console.log({
+        session,
         started: stamp(startedAt),
         finished: stamp(finishedAt),
         results
