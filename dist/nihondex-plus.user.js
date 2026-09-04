@@ -11,8 +11,326 @@
 // @description
 // ==/UserScript==
 (() => {
-  // src/practice/constants.js
-  var PRACTICE_KANA_PATH = "/practice/kana";
+  // src/core/router.js
+  var Router = class {
+    constructor() {
+      this.pages = /* @__PURE__ */ new Map();
+      this.current = null;
+      this.originals = /* @__PURE__ */ new Map();
+      this.onPopState = () => this.navigate();
+    }
+    add(path, page) {
+      this.pages.set(path, page);
+    }
+    start() {
+      for (const method of ["pushState", "replaceState"]) {
+        const original = window.history[method];
+        this.originals.set(method, original);
+        window.history[method] = new Proxy(original, {
+          apply: (target, thisArg, argArray) => {
+            const result = target.apply(thisArg, argArray);
+            this.navigate();
+            return result;
+          }
+        });
+      }
+      window.addEventListener("popstate", this.onPopState);
+      this.navigate();
+    }
+    stop() {
+      for (const [method, original] of this.originals) {
+        window.history[method] = original;
+      }
+      this.originals.clear();
+      window.removeEventListener("popstate", this.onPopState);
+    }
+    navigate() {
+      const page = this.pages.get(window.location.pathname) ?? null;
+      if (page === this.current) {
+        return;
+      }
+      if (this.current !== null) {
+        this.current.unload();
+      }
+      this.current = page;
+      if (page !== null) {
+        page.load();
+      }
+    }
+  };
+
+  // src/core/page.js
+  var Page = class extends EventTarget {
+    load() {
+    }
+    unload() {
+    }
+  };
+
+  // src/core/now.js
+  function now() {
+    return performance.now();
+  }
+
+  // src/core/sleep.js
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // src/core/ensure.js
+  async function ensure(predicate, { timeout = 1e3, interval = 20, action, message = "Condition not met" } = {}) {
+    const deadline = now() + timeout;
+    while (!predicate()) {
+      if (now() >= deadline) {
+        throw new Error(`${message} after ${timeout}ms`);
+      }
+      action?.();
+      await sleep(interval);
+    }
+  }
+
+  // src/dom/element-reference.js
+  var ElementReference = class {
+    constructor(selectorOrElement) {
+      this.selector = selectorOrElement instanceof Element ? null : selectorOrElement;
+      this.element = selectorOrElement instanceof Element ? selectorOrElement : null;
+    }
+    exists() {
+      return this.element != null || this.selector != null && this.get() != null;
+    }
+    get() {
+      return this.element != null ? this.element : document.querySelector(this.selector);
+    }
+    hasClass(className) {
+      return this.get().classList.contains(className);
+    }
+    addClass(className) {
+      this.get().classList.add(className);
+    }
+    removeClass(className) {
+      this.get().classList.remove(className);
+    }
+    click() {
+      const element = this.get();
+      element.click();
+    }
+    async wait(timeout = 1e3) {
+      await ensure(() => this.exists(), {
+        timeout,
+        message: `Element ${this.selector} not found`
+      });
+    }
+  };
+
+  // src/core/sub-page.js
+  var SubPage = class extends Page {
+    constructor(reference) {
+      super();
+      this.reference = reference;
+      this.loaded = false;
+    }
+    check() {
+      if (this.reference.exists()) {
+        this.load();
+        return;
+      }
+      this.unload();
+    }
+    load() {
+      if (this.loaded) {
+        return;
+      }
+      this.loaded = true;
+      this.onLoad();
+    }
+    unload() {
+      if (!this.loaded) {
+        return;
+      }
+      this.loaded = false;
+      this.onUnload();
+    }
+    onLoad() {
+    }
+    onUnload() {
+    }
+  };
+
+  // src/dom/button-element-reference.js
+  var ButtonElementReference = class extends ElementReference {
+    isActive() {
+      return !this.hasClass("btn-ghost");
+    }
+    enable() {
+      const element = this.get();
+      if (element.classList.contains("disabled")) {
+        element.classList.remove("disabled");
+      }
+      element.disabled = false;
+    }
+    disable() {
+      const element = this.get();
+      if (!element.classList.contains("disabled")) {
+        element.classList.add("disabled");
+      }
+      element.disabled = true;
+    }
+    async ensureActive(timeout = 1e3) {
+      await ensure(() => this.isActive(), {
+        timeout,
+        action: () => this.click(),
+        message: `Button ${this.selector} not active`
+      });
+    }
+    async ensureInactive(timeout = 1e3) {
+      await ensure(() => !this.isActive(), {
+        timeout,
+        action: () => this.click(),
+        message: `Button ${this.selector} not inactive`
+      });
+    }
+    async set(value, timeout = 1e3) {
+      await this.wait(timeout);
+      if (value) {
+        await this.ensureActive();
+      } else {
+        await this.ensureInactive();
+      }
+    }
+  };
+
+  // src/ui/wrapper.js
+  var Wrapper = class _Wrapper {
+    static card = null;
+    static body = null;
+    static buttons = [];
+    static create() {
+      _Wrapper.card = document.createElement("div");
+      _Wrapper.card.classList.add("card", "bg-base-100", "rounded-xs", "shadow-xs");
+      _Wrapper.card.style.position = "fixed";
+      _Wrapper.card.style.bottom = "0.5rem";
+      _Wrapper.card.style.right = "0.5rem";
+      _Wrapper.body = document.createElement("div");
+      _Wrapper.body.classList.add("card-body", "p-2");
+      const label = document.createElement("span");
+      label.classList.add("text-sm", "font-bold");
+      label.innerText = "Nihondex Plus";
+      _Wrapper.body.append(label);
+      _Wrapper.card.append(_Wrapper.body);
+      document.body.append(_Wrapper.card);
+    }
+    static get() {
+      if (_Wrapper.body === null) {
+        _Wrapper.create();
+      }
+      return _Wrapper.body;
+    }
+    static addButton(label, action) {
+      const button = document.createElement("button");
+      button.innerText = label;
+      button.classList.add("btn", "btn-xs", "btn-primary");
+      button.addEventListener("click", action.bind(button));
+      _Wrapper.get().append(button);
+      _Wrapper.buttons.push(button);
+      return new ButtonElementReference(button);
+    }
+    static removeButton(button) {
+      button.remove();
+      _Wrapper.buttons = _Wrapper.buttons.filter((stored) => stored !== button);
+    }
+    static clear() {
+      for (const button of _Wrapper.buttons) {
+        button.remove();
+      }
+      _Wrapper.buttons = [];
+    }
+    static remove() {
+      _Wrapper.clear();
+      if (_Wrapper.card !== null) {
+        _Wrapper.card.remove();
+      }
+      _Wrapper.card = null;
+      _Wrapper.body = null;
+    }
+  };
+
+  // src/dom/checkbox-element-reference.js
+  var CheckboxElementReference = class extends ElementReference {
+    isChecked() {
+      return this.get().checked;
+    }
+    async ensureChecked(timeout = 1e3) {
+      await ensure(() => this.isChecked(), {
+        timeout,
+        action: () => this.click(),
+        message: `Checkbox ${this.selector} not checked`
+      });
+    }
+    async ensureUnchecked(timeout = 1e3) {
+      await ensure(() => !this.isChecked(), {
+        timeout,
+        action: () => this.click(),
+        message: `Checkbox ${this.selector} not unchecked`
+      });
+    }
+    async set(value, timeout = 1e3) {
+      await this.wait(timeout);
+      if (value) {
+        await this.ensureChecked(timeout);
+      } else {
+        await this.ensureUnchecked();
+      }
+    }
+  };
+
+  // src/dom/input-element-reference.js
+  var InputElementReference = class extends ElementReference {
+    async set(value, timeout = 1e3) {
+      await this.wait(timeout);
+      const element = this.get();
+      if (element.value.toString() !== value.toString()) {
+        element.value = "";
+        for (const character of value.toString()) {
+          element.dispatchEvent(new KeyboardEvent("keydown", { key: character, bubbles: true }));
+          element.value += character;
+          element.dispatchEvent(new Event("input", { bubbles: true }));
+          element.dispatchEvent(new KeyboardEvent("keyup", { key: character, bubbles: true }));
+        }
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+  };
+
+  // src/dom/kana-row-element-reference.js
+  var KanaRowElementReference = class extends ElementReference {
+    isActive() {
+      return this.hasClass("ring-primary");
+    }
+    async ensureActive(timeout = 1e3) {
+      await ensure(() => this.isActive(), {
+        timeout,
+        action: () => this.click(),
+        message: `Button ${this.selector} not active`
+      });
+    }
+    async ensureInactive(timeout = 1e3) {
+      await ensure(() => !this.isActive(), {
+        timeout,
+        action: () => this.click(),
+        message: `Button ${this.selector} not inactive`
+      });
+    }
+    async set(value, timeout = 1e3) {
+      await this.wait(timeout);
+      if (value) {
+        await this.ensureActive();
+      } else {
+        await this.ensureInactive();
+      }
+    }
+  };
+
+  // src/page/practice-kana/constants.js
   var KANA_DAKUTEN_OFFSET = 10;
   var KANA_COMBINATIONS_OFFSET = KANA_DAKUTEN_OFFSET + 5;
   var KANA_ROW_ORDER = [
@@ -47,29 +365,76 @@
     "pya"
   ];
 
-  // src/core/now.js
-  function now() {
-    return performance.now();
-  }
-
-  // src/core/sleep.js
-  function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  // src/core/ensure.js
-  async function ensure(predicate, { timeout = 1e3, interval = 20, action, message = "Condition not met" } = {}) {
-    const deadline = now() + timeout;
-    while (!predicate()) {
-      if (now() >= deadline) {
-        throw new Error(`${message} after ${timeout}ms`);
+  // src/page/practice-kana/practice-kana-setup-form.js
+  var modeDrawKanaButton = new ButtonElementReference('button[data-tip="Draw Kana"]');
+  var modeSelectRomanjiButton = new ButtonElementReference('button[data-tip="Multiple Choice"]');
+  var modeSelectKanaButton = new ButtonElementReference('button[data-tip="Romaji to Kana"]');
+  var modeTypeRomanjiButton = new ButtonElementReference('button[data-tip="Kana to Romaji"]');
+  var modeListenTypeButton = new ButtonElementReference('button[data-tip="Listen & Type"]');
+  var modeListenDrawButton = new ButtonElementReference('button[data-tip="Listen & Draw"]');
+  var modeWordToKanaButton = new ButtonElementReference('button[data-tip="Word to Kana"]');
+  var orderRandomButton = new ButtonElementReference('div[data-walkthrough="kana-order"] > div > button:first-child');
+  var orderFocusButton = new ButtonElementReference('div[data-walkthrough="kana-order"] > div > button:last-child');
+  var sessionSizeInput = new InputElementReference('div[data-walkthrough="kana-session"] > div > input.input[type="number"]');
+  var learningCardsCheckbox = new CheckboxElementReference('div[data-walkthrough="kana-session"] + div > label > input.checkbox[type="checkbox"]');
+  var randomFontCheckbox = new CheckboxElementReference('div[data-walkthrough="kana-session"] + div + div > label > input.checkbox[type="checkbox"]');
+  var kanaSwitch = new CheckboxElementReference('div[data-walkthrough="kana-characters"] input.toggle[type="checkbox"]');
+  var PracticeKanaSetupForm = class {
+    *kanaRowMatrix() {
+      for (let index = 0; index < KANA_ROW_ORDER.length; index++) {
+        let column = 1;
+        let rowIndex = index + 1;
+        if (index >= KANA_COMBINATIONS_OFFSET) {
+          column = 3;
+          rowIndex -= KANA_COMBINATIONS_OFFSET;
+        } else if (index >= KANA_DAKUTEN_OFFSET) {
+          column = 2;
+          rowIndex -= KANA_DAKUTEN_OFFSET;
+        }
+        yield { column, rowIndex, index };
       }
-      action?.();
-      await sleep(interval);
     }
-  }
+    async applyRecipeOrder(targetOrder, orderRandomButton2, orderFocusButton2) {
+      if (targetOrder === "random") {
+        await orderRandomButton2.wait();
+        await orderRandomButton2.ensureActive();
+      } else if (targetOrder === "focus") {
+        await orderFocusButton2.wait();
+        await orderFocusButton2.ensureActive();
+      } else {
+        throw new Error(`Invalid order: ${targetOrder}. Must be "random" or "focus".`);
+      }
+    }
+    async applyKana(kana) {
+      for (const { column, rowIndex, index } of this.kanaRowMatrix()) {
+        const kanaRow = new KanaRowElementReference(`div[data-walkthrough="kana-characters"] > div.grid > div.card:nth-child(${column}) > div.card-body > div.grid > div.card:nth-child(${rowIndex})`);
+        await kanaRow.set(kana[KANA_ROW_ORDER[index]]);
+      }
+    }
+    async apply(recipe2) {
+      await Promise.all([
+        modeDrawKanaButton.set(recipe2.drawKana),
+        modeSelectRomanjiButton.set(recipe2.selectRomanji),
+        modeSelectKanaButton.set(recipe2.selectKana),
+        modeTypeRomanjiButton.set(recipe2.typeRomanji),
+        modeListenTypeButton.set(recipe2.listenType),
+        modeListenDrawButton.set(recipe2.listenDraw),
+        modeWordToKanaButton.set(recipe2.wordToKana),
+        this.applyRecipeOrder(recipe2.order, orderRandomButton, orderFocusButton),
+        sessionSizeInput.set(recipe2.size),
+        learningCardsCheckbox.set(recipe2.learningCards),
+        randomFontCheckbox.set(recipe2.randomFont),
+        (async () => {
+          await kanaSwitch.set(false);
+          await this.applyKana(recipe2.kana.hiragana);
+          await kanaSwitch.set(true);
+          await this.applyKana(recipe2.kana.katakana);
+        })()
+      ]);
+    }
+  };
 
-  // src/practice/recipe.js
+  // src/page/practice-kana/recipe.js
   var recipe = {
     drawKana: false,
     selectRomanji: true,
@@ -148,182 +513,65 @@
     }
   };
 
-  // src/dom/element-reference.js
-  var ElementReference = class {
-    constructor(selectorOrElement) {
-      this.selector = selectorOrElement instanceof Element ? null : selectorOrElement;
-      this.element = selectorOrElement instanceof Element ? selectorOrElement : null;
+  // src/page/practice-kana/practice-kana-setup-page.js
+  var PracticeKanaSetupPage = class extends SubPage {
+    constructor() {
+      super(new ButtonElementReference('button[data-walkthrough="kana-start"]'));
+      this.form = new PracticeKanaSetupForm();
+      this.element = null;
+      this.startButton = null;
+      this.onStartClick = (event) => this.onStart(event);
     }
-    exists() {
-      return this.element != null || this.selector != null && this.get() != null;
-    }
-    get() {
-      return this.element != null ? this.element : document.querySelector(this.selector);
-    }
-    hasClass(className) {
-      return this.get().classList.contains(className);
-    }
-    click() {
-      const element = this.get();
-      element.click();
-    }
-    async wait(timeout = 1e3) {
-      await ensure(() => this.exists(), {
-        timeout,
-        message: `Element ${this.selector} not found`
+    onLoad() {
+      this.element = this.reference.get();
+      this.element.addEventListener("click", this.onStartClick);
+      this.startButton = Wrapper.addButton("Start", async () => {
+        this.startButton.disable();
+        await this.form.apply(recipe);
+        this.startButton.enable();
       });
+    }
+    onUnload() {
+      this.element.removeEventListener("click", this.onStartClick);
+      this.element = null;
+      Wrapper.removeButton(this.startButton.get());
+      this.startButton = null;
+    }
+    onStart(event) {
+      this.startButton.disable();
+      this.dispatchEvent(new CustomEvent("start"));
     }
   };
 
-  // src/dom/button-element-reference.js
-  var ButtonElementReference = class extends ElementReference {
-    isActive() {
-      return !this.hasClass("btn-ghost");
-    }
-    enable() {
-      const element = this.get();
-      if (element.classList.contains("disabled")) {
-        element.classList.remove("disabled");
-      }
-      element.disabled = false;
-    }
-    disable() {
-      const element = this.get();
-      if (!element.classList.contains("disabled")) {
-        element.classList.add("disabled");
-      }
-      element.disabled = true;
-    }
-    async ensureActive(timeout = 1e3) {
-      await ensure(() => this.isActive(), {
-        timeout,
-        action: () => this.click(),
-        message: `Button ${this.selector} not active`
-      });
-    }
-    async ensureInactive(timeout = 1e3) {
-      await ensure(() => !this.isActive(), {
-        timeout,
-        action: () => this.click(),
-        message: `Button ${this.selector} not inactive`
-      });
-    }
-    async set(value, timeout = 1e3) {
-      await this.wait(timeout);
-      if (value) {
-        await this.ensureActive();
-      } else {
-        await this.ensureInactive();
-      }
-    }
-  };
-
-  // src/ui/wrapper.js
-  var BUTTON_STORE = [];
-  function createWrapper() {
-    const wrapperCard = document.createElement("div");
-    wrapperCard.classList.add("card", "bg-base-100", "rounded-xs", "shadow-xs");
-    wrapperCard.style.position = "fixed";
-    wrapperCard.style.bottom = "0.5rem";
-    wrapperCard.style.right = "0.5rem";
-    const wrapperBody = document.createElement("div");
-    wrapperBody.classList.add("card-body", "p-2");
-    const label = document.createElement("span");
-    label.classList.add("text-sm", "font-bold");
-    label.innerText = "Nihondex Plus";
-    wrapperBody.append(label);
-    wrapperCard.append(wrapperBody);
-    document.body.append(wrapperCard);
-    return wrapperBody;
-  }
-  function createButton(label, action) {
-    const button = document.createElement("button");
-    button.innerText = label;
-    button.classList.add("btn", "btn-xs", "btn-primary");
-    button.addEventListener("click", action.bind(button));
-    wrapper.append(button);
-    BUTTON_STORE.push(button);
-    return new ButtonElementReference(button);
-  }
-  var wrapper = createWrapper();
-
-  // src/dom/checkbox-element-reference.js
-  var CheckboxElementReference = class extends ElementReference {
-    isChecked() {
-      return this.get().checked;
-    }
-    async ensureChecked(timeout = 1e3) {
-      await ensure(() => this.isChecked(), {
-        timeout,
-        action: () => this.click(),
-        message: `Checkbox ${this.selector} not checked`
-      });
-    }
-    async ensureUnchecked(timeout = 1e3) {
-      await ensure(() => !this.isChecked(), {
-        timeout,
-        action: () => this.click(),
-        message: `Checkbox ${this.selector} not unchecked`
-      });
-    }
-    async set(value, timeout = 1e3) {
-      await this.wait(timeout);
-      if (value) {
-        await this.ensureChecked(timeout);
-      } else {
-        await this.ensureUnchecked();
-      }
-    }
-  };
-
-  // src/dom/input-element-reference.js
-  var InputElementReference = class extends ElementReference {
-    async set(value, timeout = 1e3) {
-      await this.wait(timeout);
-      const element = this.get();
-      if (element.value.toString() !== value.toString()) {
-        element.value = "";
-        for (const character of value.toString()) {
-          element.dispatchEvent(new KeyboardEvent("keydown", { key: character, bubbles: true }));
-          element.value += character;
-          element.dispatchEvent(new Event("input", { bubbles: true }));
-          element.dispatchEvent(new KeyboardEvent("keyup", { key: character, bubbles: true }));
+  // src/util/disable-animations.js
+  var NO_ANIMATIONS_CLASS = "nihondex-plus-no-animations";
+  function disableAnimations() {
+    const style = document.createElement("style");
+    style.textContent = `
+        .${NO_ANIMATIONS_CLASS},
+        .${NO_ANIMATIONS_CLASS} *,
+        .${NO_ANIMATIONS_CLASS} *::before,
+        .${NO_ANIMATIONS_CLASS} *::after {
+            transition: none !important;
+            animation: none !important;
         }
-        element.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    }
-  };
+    `;
+    document.head.append(style);
+  }
 
-  // src/dom/kana-row-element-reference.js
-  var KanaRowElementReference = class extends ElementReference {
-    isActive() {
-      return this.hasClass("ring-primary");
-    }
-    async ensureActive(timeout = 1e3) {
-      await ensure(() => this.isActive(), {
-        timeout,
-        action: () => this.click(),
-        message: `Button ${this.selector} not active`
-      });
-    }
-    async ensureInactive(timeout = 1e3) {
-      await ensure(() => !this.isActive(), {
-        timeout,
-        action: () => this.click(),
-        message: `Button ${this.selector} not inactive`
-      });
-    }
-    async set(value, timeout = 1e3) {
-      await this.wait(timeout);
-      if (value) {
-        await this.ensureActive();
-      } else {
-        await this.ensureInactive();
-      }
-    }
-  };
+  // src/util/hide-elements.js
+  function hideElements(selector) {
+    const style = document.createElement("style");
+    style.textContent = `
+        ${selector} {
+            display: none !important;
+        }
+    `;
+    document.head.append(style);
+    return style;
+  }
 
-  // src/practice/kana-game.js
+  // src/page/practice-kana/kana-game.js
   var KanaGame = class extends EventTarget {
     constructor() {
       super();
@@ -350,154 +598,64 @@
     }
   };
 
-  // src/practice/practice-kana.js
-  async function applyRecipeOrder(targetOrder, orderRandomButton, orderFocusButton) {
-    if (targetOrder === "random") {
-      await orderRandomButton.wait();
-      await orderRandomButton.ensureActive();
-    } else if (targetOrder === "focus") {
-      await orderFocusButton.wait();
-      await orderFocusButton.ensureActive();
-    } else {
-      throw new Error(`Invalid order: ${targetOrder}. Must be "random" or "focus".`);
+  // src/page/practice-kana/practice-kana-page.js
+  var PracticeKanaPage = class extends Page {
+    constructor() {
+      super();
+      this.hiddenStyles = [];
+      this.kanaGame = null;
+      this.page = new ElementReference(".kana-practice-page");
+      this.setupPage = new PracticeKanaSetupPage();
+      this.observer = new MutationObserver(() => this.check());
+      this.setupPage.addEventListener("start", () => this.start());
     }
-  }
-  function* kanaRowMatrix() {
-    for (let index = 0; index < KANA_ROW_ORDER.length; index++) {
-      let column = 1;
-      let rowIndex = index + 1;
-      if (index >= KANA_COMBINATIONS_OFFSET) {
-        column = 3;
-        rowIndex -= KANA_COMBINATIONS_OFFSET;
-      } else if (index >= KANA_DAKUTEN_OFFSET) {
-        column = 2;
-        rowIndex -= KANA_DAKUTEN_OFFSET;
+    check() {
+      this.setupPage.check();
+    }
+    start() {
+      this.stopGame();
+      this.kanaGame = new KanaGame();
+      this.kanaGame.addEventListener("end", () => this.end());
+      this.kanaGame.start();
+    }
+    end() {
+      this.kanaGame = null;
+      this.check();
+    }
+    stopGame() {
+      if (this.kanaGame === null) {
+        return;
       }
-      yield { column, rowIndex, index };
+      this.kanaGame.stop();
+      this.kanaGame = null;
     }
-  }
-  function disableAnimations() {
-    const style = document.createElement("style");
-    style.id = "nihondex-plus-no-animations";
-    style.textContent = `
-        .kana-practice-page,
-        .kana-practice-page *,
-        .kana-practice-page *::before,
-        .kana-practice-page *::after {
-            transition: none !important;
-            animation: none !important;
-        }
-
-        .animate-subtle-bounce,
-        canvas[data-confetti] {
-            display: none !important;
-        }
-    `;
-    document.head.append(style);
-  }
-  function enableAnimations() {
-    document.getElementById("nihondex-plus-no-animations")?.remove();
-  }
-  function onStartPractice(event) {
-    if (event.target.closest('button[data-walkthrough="kana-start"]') === null) {
-      return;
+    load() {
+      this.page.addClass(NO_ANIMATIONS_CLASS);
+      this.hiddenStyles = [
+        hideElements("canvas[data-confetti]"),
+        hideElements(".animate-subtle-bounce")
+      ];
+      this.observer.observe(document.body, { subtree: true, childList: true });
+      this.check();
     }
-    startButton.disable();
-    kanaGame = new KanaGame();
-    kanaGame.addEventListener("end", () => startButton.enable());
-    kanaGame.start();
-  }
-  function loadPracticeKana() {
-    if (practiceKanaLoaded) {
-      return;
+    unload() {
+      this.observer.disconnect();
+      this.stopGame();
+      this.setupPage.unload();
+      this.page.removeClass(NO_ANIMATIONS_CLASS);
+      for (const style of this.hiddenStyles) {
+        style.remove();
+      }
+      this.hiddenStyles = [];
     }
-    practiceKanaLoaded = true;
-    disableAnimations();
-    document.addEventListener("click", onStartPractice, { capture: true, passive: true });
-    const modeDrawKanaButton = new ButtonElementReference('button[data-tip="Draw Kana"]');
-    const modeSelectRomanjiButton = new ButtonElementReference('button[data-tip="Multiple Choice"]');
-    const modeSelectKanaButton = new ButtonElementReference('button[data-tip="Romaji to Kana"]');
-    const modeTypeRomanjiButton = new ButtonElementReference('button[data-tip="Kana to Romaji"]');
-    const modeListenTypeButton = new ButtonElementReference('button[data-tip="Listen & Type"]');
-    const modeListenDrawButton = new ButtonElementReference('button[data-tip="Listen & Draw"]');
-    const modeWordToKanaButton = new ButtonElementReference('button[data-tip="Word to Kana"]');
-    const orderRandomButton = new ButtonElementReference('div[data-walkthrough="kana-order"] > div > button:first-child');
-    const orderFocusButton = new ButtonElementReference('div[data-walkthrough="kana-order"] > div > button:last-child');
-    const sessionSizeInput = new InputElementReference('div[data-walkthrough="kana-session"] > div > input.input[type="number"]');
-    const learningCardsCheckbox = new CheckboxElementReference('div[data-walkthrough="kana-session"] + div > label > input.checkbox[type="checkbox"]');
-    const randomFontCheckbox = new CheckboxElementReference('div[data-walkthrough="kana-session"] + div + div > label > input.checkbox[type="checkbox"]');
-    const kanaSwitch = new CheckboxElementReference('div[data-walkthrough="kana-characters"] input.toggle[type="checkbox"]');
-    startButton = createButton("Start", async () => {
-      startButton.disable();
-      await Promise.all([
-        modeDrawKanaButton.set(recipe.drawKana),
-        modeSelectRomanjiButton.set(recipe.selectRomanji),
-        modeSelectKanaButton.set(recipe.selectKana),
-        modeTypeRomanjiButton.set(recipe.typeRomanji),
-        modeListenTypeButton.set(recipe.listenType),
-        modeListenDrawButton.set(recipe.listenDraw),
-        modeWordToKanaButton.set(recipe.wordToKana),
-        applyRecipeOrder(recipe.order, orderRandomButton, orderFocusButton),
-        sessionSizeInput.set(recipe.size),
-        learningCardsCheckbox.set(recipe.learningCards),
-        randomFontCheckbox.set(recipe.randomFont),
-        (async () => {
-          await kanaSwitch.set(false);
-          for (const { column, rowIndex, index } of kanaRowMatrix()) {
-            const kanaRow = new KanaRowElementReference(`div[data-walkthrough="kana-characters"] > div.grid > div.card:nth-child(${column}) > div.card-body > div.grid > div.card:nth-child(${rowIndex})`);
-            await kanaRow.set(recipe.kana.hiragana[KANA_ROW_ORDER[index]]);
-          }
-          await kanaSwitch.set(true);
-          for (const { column, rowIndex, index } of kanaRowMatrix()) {
-            const kanaRow = new KanaRowElementReference(`div[data-walkthrough="kana-characters"] > div.grid > div.card:nth-child(${column}) > div.card-body > div.grid > div.card:nth-child(${rowIndex})`);
-            await kanaRow.set(recipe.kana.katakana[KANA_ROW_ORDER[index]]);
-          }
-        })()
-      ]);
-      startButton.enable();
-    });
-  }
-  function unloadPracticeKana() {
-    for (const buttonReference of BUTTON_STORE) {
-      const button = buttonReference.get();
-      button.remove();
-    }
-    BUTTON_STORE.length = 0;
-    startButton = null;
-    practiceKanaLoaded = false;
-    document.removeEventListener("click", onStartPractice, { capture: true });
-    enableAnimations();
-    if (kanaGame !== null) {
-      kanaGame.stop();
-      kanaGame = null;
-    }
-  }
-  var practiceKanaLoaded = false;
-  var startButton = null;
-  var kanaGame = null;
+  };
 
   // src/main.js
   async function main() {
-    function onNavigation(url) {
-      if (url.pathname === PRACTICE_KANA_PATH) {
-        loadPracticeKana();
-      } else {
-        unloadPracticeKana();
-      }
-    }
-    for (const method of ["pushState", "replaceState"]) {
-      window.history[method] = new Proxy(window.history[method], {
-        apply: (target, thisArg, argArray) => {
-          const result = target.apply(thisArg, argArray);
-          onNavigation(new URL(window.location.href));
-          return result;
-        }
-      });
-    }
-    window.addEventListener("popstate", () => {
-      onNavigation(new URL(window.location.href));
-    });
-    onNavigation(new URL(window.location.href));
+    disableAnimations();
+    const router = new Router();
+    router.add("/practice/kana", new PracticeKanaPage());
+    router.start();
   }
   (() => {
     main().catch((error) => {

@@ -1,36 +1,14 @@
-import {PRACTICE_KANA_PATH} from './practice/constants.js';
-import {loadPracticeKana, unloadPracticeKana} from './practice/practice-kana.js';
+import {Router} from './core/router.js';
+import {PracticeKanaPage} from './page/practice-kana/practice-kana-page.js';
+import {disableAnimations} from './util/disable-animations.js';
 
 async function main() {
+    disableAnimations();
 
-    /**
-     * @param {URL} url
-     */
-    function onNavigation(url) {
-        if (url.pathname === PRACTICE_KANA_PATH) {
-            loadPracticeKana();
-        } else {
-            unloadPracticeKana();
-        }
-    }
+    const router = new Router();
 
-    for (const method of ['pushState', 'replaceState']) {
-        window.history[method] = new Proxy(window.history[method], {
-            apply: (target, thisArg, argArray) => {
-                const result = target.apply(thisArg, argArray);
-
-                onNavigation(new URL(window.location.href));
-
-                return result;
-            },
-        });
-    }
-
-    window.addEventListener('popstate', () => {
-        onNavigation(new URL(window.location.href));
-    });
-
-    onNavigation(new URL(window.location.href));
+    router.add("/practice/kana", new PracticeKanaPage());
+    router.start();
 }
 
 (() => {

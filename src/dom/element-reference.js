@@ -18,6 +18,14 @@ export class ElementReference {
         return this.get().classList.contains(className);
     }
 
+    addClass(className) {
+        this.get().classList.add(className);
+    }
+
+    removeClass(className) {
+        this.get().classList.remove(className);
+    }
+
     click() {
         const element = this.get();
         element.click();
