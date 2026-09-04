@@ -24,6 +24,13 @@ const FEEDBACK_SUCCESS = '\u2713';
 
 const FEEDBACK_ERROR = '\u2717';
 
+const EMPTY_ANSWER = {
+    success: false,
+    prompt: null,
+    options: [],
+    chosen: null,
+};
+
 export class PracticeKanaGamePage extends SubPage {
     constructor() {
         super('[game-count]');
@@ -35,6 +42,7 @@ export class PracticeKanaGamePage extends SubPage {
         this.gameMode = null;
         this.tracked = null;
         this.answered = false;
+        this.answer = null;
         this.feedback = null;
         this.retries = 0;
     }
@@ -88,14 +96,17 @@ export class PracticeKanaGamePage extends SubPage {
 
         if (mark === FEEDBACK_SUCCESS) {
             this.answered = true;
+            this.answer = this.snapshot(card);
 
-            this.finish();
+            this.collector.mark('answer', {correct: true});
 
             return;
         }
 
         if (mark === FEEDBACK_ERROR) {
             this.retries += 1;
+
+            this.collector.mark('answer', {correct: false});
         }
     }
 
@@ -152,27 +163,35 @@ export class PracticeKanaGamePage extends SubPage {
         return chosen === undefined ? null : this.getLabel(chosen);
     }
 
+    snapshot(card) {
+        return {
+            success: this.getSuccess(card),
+            prompt: this.getPrompt(card),
+            options: this.getOptions(card),
+            chosen: this.getChosen(card),
+        };
+    }
+
     finish() {
         if (!this.collector.isRunning()) {
             return;
         }
 
         const card = this.tracked;
+        const answer = this.answer ?? (card === null ? EMPTY_ANSWER : this.snapshot(card));
         const started = absolute(this.collector.startTime);
         const log = this.collector.stop();
         const finished = absolute(this.collector.endTime);
+        const processed = new TrackingProcessor(log).process();
 
         const tracking = {
             started,
             finished,
             gameMode: this.gameMode,
-            success: card === null ? false : this.getSuccess(card),
             retries: this.retries,
-            prompt: card === null ? null : this.getPrompt(card),
-            options: card === null ? [] : this.getOptions(card),
-            chosen: card === null ? null : this.getChosen(card),
+            ...answer,
             log,
-            processed: new TrackingProcessor(log).process(),
+            processed,
         };
 
         this.trackings.push(tracking);
@@ -182,6 +201,7 @@ export class PracticeKanaGamePage extends SubPage {
         this.finish();
 
         this.answered = false;
+        this.answer = null;
         this.feedback = null;
         this.retries = 0;
         this.tracked = card;

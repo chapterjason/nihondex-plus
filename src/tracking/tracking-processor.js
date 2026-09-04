@@ -29,6 +29,11 @@ export class TrackingProcessor {
         return custom.length === 0 ? entry : { ...entry, custom };
     }
 
+    static INPUTS = [
+        'click',
+        'keydown',
+    ];
+
     static BOUNDARIES = [
         'pointerdown',
         'pointerup',
@@ -62,8 +67,30 @@ export class TrackingProcessor {
             ...this.movements(),
             ...this.typing(),
             ...this.visibility(),
+            ...this.answers(),
             ...this.select('start', 'end', 'click', ...TrackingProcessor.BOUNDARIES, 'focusin', 'focusout'),
         ].sort((a, b) => a.time - b.time);
+    }
+
+    answers() {
+        const inputs = this.select(...TrackingProcessor.INPUTS);
+
+        return this.select('answer').map((answer) => this.describeAnswer(answer, inputs));
+    }
+
+    describeAnswer(answer, inputs) {
+        const input = inputs.filter((event) => event.time <= answer.time).pop();
+
+        if (input === undefined) {
+            return {...answer, detected: answer.time, input: null};
+        }
+
+        return {
+            ...answer,
+            time: input.time,
+            detected: answer.time,
+            input: input.type,
+        };
     }
 
     movements() {

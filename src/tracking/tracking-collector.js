@@ -57,6 +57,18 @@ export class TrackingCollector extends EventTarget {
         return this.log;
     }
 
+    mark(type, extra = {}) {
+        if (!this.isRunning()) {
+            return null;
+        }
+
+        const time = performance.now();
+
+        this.log.push(this.line(type, time, null, extra));
+
+        return Math.round(time - this.startTime);
+    }
+
     lines({ type, time, source }) {
         if (type === 'pointermove') {
             const samples = source.getCoalescedEvents();
@@ -71,10 +83,11 @@ export class TrackingCollector extends EventTarget {
         return [this.line(type, time, source)];
     }
 
-    line(type, time, source) {
+    line(type, time, source, extra = {}) {
         const record = {
             time: Math.round(time - this.startTime),
             type,
+            ...extra,
         };
 
         switch (type) {

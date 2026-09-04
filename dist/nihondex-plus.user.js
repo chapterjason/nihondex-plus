@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.5
+// @version      1.0.7
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -122,7 +122,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.5"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.7"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -762,6 +762,14 @@
       this.startTime = null;
       return this.log;
     }
+    mark(type, extra = {}) {
+      if (!this.isRunning()) {
+        return null;
+      }
+      const time2 = performance.now();
+      this.log.push(this.line(type, time2, null, extra));
+      return Math.round(time2 - this.startTime);
+    }
     lines({ type, time: time2, source }) {
       if (type === "pointermove") {
         const samples = source.getCoalescedEvents();
@@ -772,10 +780,11 @@
       }
       return [this.line(type, time2, source)];
     }
-    line(type, time2, source) {
+    line(type, time2, source, extra = {}) {
       const record = {
         time: Math.round(time2 - this.startTime),
-        type
+        type,
+        ...extra
       };
       switch (type) {
         case "click":
@@ -869,6 +878,10 @@
       const custom = _TrackingProcessor.custom(records);
       return custom.length === 0 ? entry : { ...entry, custom };
     }
+    static INPUTS = [
+      "click",
+      "keydown"
+    ];
     static BOUNDARIES = [
       "pointerdown",
       "pointerup",
@@ -894,8 +907,25 @@
         ...this.movements(),
         ...this.typing(),
         ...this.visibility(),
+        ...this.answers(),
         ...this.select("start", "end", "click", ..._TrackingProcessor.BOUNDARIES, "focusin", "focusout")
       ].sort((a, b) => a.time - b.time);
+    }
+    answers() {
+      const inputs = this.select(..._TrackingProcessor.INPUTS);
+      return this.select("answer").map((answer) => this.describeAnswer(answer, inputs));
+    }
+    describeAnswer(answer, inputs) {
+      const input = inputs.filter((event) => event.time <= answer.time).pop();
+      if (input === void 0) {
+        return { ...answer, detected: answer.time, input: null };
+      }
+      return {
+        ...answer,
+        time: input.time,
+        detected: answer.time,
+        input: input.type
+      };
     }
     movements() {
       const groups = [];
@@ -1114,6 +1144,12 @@
   var FEEDBACK_SELECTOR = ".animate-fly-up";
   var FEEDBACK_SUCCESS = "✓";
   var FEEDBACK_ERROR = "✗";
+  var EMPTY_ANSWER = {
+    success: false,
+    prompt: null,
+    options: [],
+    chosen: null
+  };
   var PracticeKanaGamePage = class extends SubPage {
     constructor() {
       super("[game-count]");
@@ -1124,6 +1160,7 @@
       this.gameMode = null;
       this.tracked = null;
       this.answered = false;
+      this.answer = null;
       this.feedback = null;
       this.retries = 0;
     }
@@ -1160,11 +1197,13 @@
       const mark = feedback.textContent.trim();
       if (mark === FEEDBACK_SUCCESS) {
         this.answered = true;
-        this.finish();
+        this.answer = this.snapshot(card);
+        this.collector.mark("answer", { correct: true });
         return;
       }
       if (mark === FEEDBACK_ERROR) {
         this.retries += 1;
+        this.collector.mark("answer", { correct: false });
       }
     }
     check() {
@@ -1202,31 +1241,39 @@
       const chosen = options.find((option) => option.classList.contains(OPTION_ERROR_CLASS)) ?? options.find((option) => option.classList.contains(OPTION_SUCCESS_CLASS));
       return chosen === void 0 ? null : this.getLabel(chosen);
     }
+    snapshot(card) {
+      return {
+        success: this.getSuccess(card),
+        prompt: this.getPrompt(card),
+        options: this.getOptions(card),
+        chosen: this.getChosen(card)
+      };
+    }
     finish() {
       if (!this.collector.isRunning()) {
         return;
       }
       const card = this.tracked;
+      const answer = this.answer ?? (card === null ? EMPTY_ANSWER : this.snapshot(card));
       const started = absolute(this.collector.startTime);
       const log = this.collector.stop();
       const finished = absolute(this.collector.endTime);
+      const processed = new TrackingProcessor(log).process();
       const tracking = {
         started,
         finished,
         gameMode: this.gameMode,
-        success: card === null ? false : this.getSuccess(card),
         retries: this.retries,
-        prompt: card === null ? null : this.getPrompt(card),
-        options: card === null ? [] : this.getOptions(card),
-        chosen: card === null ? null : this.getChosen(card),
+        ...answer,
         log,
-        processed: new TrackingProcessor(log).process()
+        processed
       };
       this.trackings.push(tracking);
     }
     onCard(card) {
       this.finish();
       this.answered = false;
+      this.answer = null;
       this.feedback = null;
       this.retries = 0;
       this.tracked = card;
