@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+
+node scripts/bump-version.mjs
+npm run build --silent
+
+git add src/header.js package.json dist/nihondex-plus.user.js
