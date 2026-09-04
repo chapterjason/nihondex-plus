@@ -413,11 +413,20 @@ function onStartPractice(event) {
         return;
     }
 
+    startButton.disable();
+
     kanaGame = new KanaGame();
+    kanaGame.addEventListener('end', () => startButton.enable());
     kanaGame.start();
 }
 
 function loadPracticeKana() {
+    if (practiceKanaLoaded) {
+        return;
+    }
+
+    practiceKanaLoaded = true;
+
     disableAnimations();
 
     document.addEventListener('click', onStartPractice, {capture: true, passive: true});
@@ -439,8 +448,8 @@ function loadPracticeKana() {
 
     const kanaSwitch = new CheckboxElementReference('div[data-walkthrough="kana-characters"] input.toggle[type="checkbox"]');
 
-    const button = createButton('Start', async () => {
-        button.disable();
+    startButton = createButton('Start', async () => {
+        startButton.disable();
 
         await Promise.all([
             modeDrawKanaButton.set(recipe.drawKana),
@@ -475,7 +484,7 @@ function loadPracticeKana() {
             })(),
         ]);
 
-        button.enable();
+        startButton.enable();
     });
 }
 
@@ -507,13 +516,17 @@ function unloadPracticeKana() {
     }
 
     BUTTON_STORE.length = 0;
+    startButton = null;
+    practiceKanaLoaded = false;
 
     document.removeEventListener('click', onStartPractice, {capture: true});
 
     enableAnimations();
 
-    kanaGame?.stop();
-    kanaGame = null;
+    if (kanaGame !== null) {
+        kanaGame.stop();
+        kanaGame = null;
+    }
 }
 
 const EVENTS = [
@@ -1176,14 +1189,42 @@ class TrackingProcessor {
     }
 }
 
-class KanaGame {
+class KanaGame extends EventTarget {
+    constructor() {
+        super();
+
+        this.started = false;
+        this.observer = new MutationObserver(() => this.check());
+    }
+
     start() {
+        this.observer.observe(document.body, {subtree: true, childList: true});
     }
 
     stop() {
+        this.observer.disconnect();
+    }
+
+    check() {
+        if (document.querySelector('[active-system]') !== null) {
+            this.started = true;
+
+            return;
+        }
+
+        if (!this.started) {
+            return;
+        }
+
+        this.started = false;
+
+        this.stop();
+        this.dispatchEvent(new CustomEvent('end'));
     }
 }
 
+let practiceKanaLoaded = false;
+let startButton = null;
 let kanaGame = null;
 
 async function main() {
