@@ -1,11 +1,11 @@
 import {UiElement} from './ui-element.js';
 
 export class UiButton extends UiElement {
-    constructor(label, action) {
+    constructor(label) {
         super();
 
         this.element.innerText = label;
-        this.element.addEventListener('click', action);
+        this.element.addEventListener('click', () => this.emit('click'));
     }
 
     render() {

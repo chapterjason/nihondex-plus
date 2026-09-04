@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.16
+// @version      1.0.17
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -77,57 +77,6 @@
     }
   };
 
-  // src/ui/ui-element.js
-  var UiElement = class {
-    constructor() {
-      this.element = this.render();
-    }
-    render() {
-      return document.createElement("div");
-    }
-    mount(parent) {
-      parent.append(this.element);
-    }
-    unmount() {
-      this.element.remove();
-    }
-  };
-
-  // src/ui/ui-panel.js
-  var UiPanel = class extends UiElement {
-    constructor(label) {
-      super();
-      this.children = [];
-      this.body = this.element.firstElementChild;
-      this.body.firstElementChild.innerText = label;
-    }
-    render() {
-      const card = document.createElement("div");
-      card.classList.add("card", "bg-base-100", "rounded-xs", "shadow-xs");
-      card.style.position = "fixed";
-      card.style.bottom = "0.5rem";
-      card.style.right = "0.5rem";
-      const body = document.createElement("div");
-      body.classList.add("card-body", "p-2");
-      const title = document.createElement("span");
-      title.classList.add("text-sm", "font-bold");
-      body.append(title);
-      card.append(body);
-      return card;
-    }
-    add(child) {
-      this.children.push(child);
-      child.mount(this.body);
-    }
-    remove(child) {
-      this.children = this.children.filter((stored) => stored !== child);
-      child.unmount();
-    }
-  };
-
-  // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.16"}`);
-
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
     constructor() {
@@ -156,6 +105,84 @@
 
   // src/core/observer.js
   var observer = new DomObserver();
+
+  // src/ui/ui-element.js
+  var UiElement = class extends EventTarget {
+    constructor() {
+      super();
+      this.element = this.render();
+    }
+    render() {
+      return document.createElement("div");
+    }
+    emit(type, detail = null) {
+      this.dispatchEvent(new CustomEvent(type, { detail }));
+    }
+    mount(parent) {
+      parent.append(this.element);
+    }
+    unmount() {
+      this.element.remove();
+    }
+  };
+
+  // src/ui/ui-panel.js
+  var UiPanel = class extends UiElement {
+    constructor(label) {
+      super();
+      this.children = [];
+      this.body = this.element.firstElementChild;
+      this.body.firstElementChild.innerText = label;
+    }
+    render() {
+      const card = document.createElement("div");
+      card.classList.add("card", "bg-base-100", "rounded-xs", "shadow-xs", "overflow-visible");
+      card.style.position = "fixed";
+      card.style.zIndex = "200";
+      card.style.bottom = "0.5rem";
+      card.style.right = "0.5rem";
+      const body = document.createElement("div");
+      body.classList.add("card-body", "p-2");
+      const title = document.createElement("span");
+      title.classList.add("text-sm", "font-bold");
+      body.append(title);
+      card.append(body);
+      return card;
+    }
+    add(child) {
+      this.children.push(child);
+      child.mount(this.body);
+    }
+    remove(child) {
+      this.children = this.children.filter((stored) => stored !== child);
+      child.unmount();
+    }
+  };
+
+  // src/ui/panel.js
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.17"}`);
+
+  // src/ui/ui-button.js
+  var UiButton = class extends UiElement {
+    constructor(label) {
+      super();
+      this.element.innerText = label;
+      this.element.addEventListener("click", () => this.emit("click"));
+    }
+    render() {
+      const button = document.createElement("button");
+      button.classList.add("btn", "btn-xs", "btn-primary");
+      return button;
+    }
+    enable() {
+      this.element.classList.remove("disabled");
+      this.element.disabled = false;
+    }
+    disable() {
+      this.element.classList.add("disabled");
+      this.element.disabled = true;
+    }
+  };
 
   // src/core/now.js
   function now() {
@@ -262,25 +289,74 @@
   var SubPage = class extends Page {
   };
 
-  // src/ui/ui-button.js
-  var UiButton = class extends UiElement {
-    constructor(label, action) {
+  // src/ui/ui-dropdown.js
+  var UiDropdown = class extends UiElement {
+    constructor(label, items = []) {
       super();
-      this.element.innerText = label;
-      this.element.addEventListener("click", action);
+      this.trigger = this.element.firstElementChild;
+      this.menu = this.element.lastElementChild;
+      this.trigger.innerText = label;
+      this.set(items);
     }
     render() {
+      const dropdown = document.createElement("div");
+      dropdown.classList.add("dropdown", "dropdown-top", "dropdown-end", "w-full");
+      const trigger = document.createElement("button");
+      trigger.classList.add("btn", "btn-xs", "btn-primary", "w-full");
+      trigger.tabIndex = 0;
+      const menu = document.createElement("ul");
+      menu.classList.add("dropdown-content", "menu", "bg-base-100", "rounded-box", "shadow", "p-1", "z-[200]", "w-max", "min-w-full", "flex-nowrap", "max-h-64", "overflow-y-auto");
+      menu.tabIndex = 0;
+      menu.style.top = "auto";
+      menu.style.left = "auto";
+      menu.style.bottom = "0";
+      menu.style.right = "100%";
+      menu.style.marginRight = "0.25rem";
+      dropdown.append(trigger, menu);
+      return dropdown;
+    }
+    set(items) {
+      const groups = /* @__PURE__ */ new Map();
+      for (const { value, label } of items) {
+        const [first, ...rest] = label.split(" ");
+        const group = rest.length === 0 ? null : first;
+        const entry = { value, label: rest.length === 0 ? label : rest.join(" ") };
+        groups.set(group, [...groups.get(group) ?? [], entry]);
+      }
+      this.menu.replaceChildren(...[...groups].flatMap(([group, entries]) => [
+        ...group === null ? [] : [this.title(group)],
+        ...entries.map((entry) => this.item(entry))
+      ]));
+    }
+    title(label) {
+      const title = document.createElement("li");
+      title.classList.add("menu-title", "text-xs", "px-2", "py-0");
+      title.innerText = label;
+      return title;
+    }
+    item({ value, label }) {
+      const item = document.createElement("li");
       const button = document.createElement("button");
-      button.classList.add("btn", "btn-xs", "btn-primary");
-      return button;
+      button.classList.add("text-xs");
+      button.innerText = label;
+      button.addEventListener("click", () => {
+        this.close();
+        this.emit("select", value);
+      });
+      item.append(button);
+      return item;
+    }
+    close() {
+      this.trigger.blur();
+      this.menu.blur();
     }
     enable() {
-      this.element.classList.remove("disabled");
-      this.element.disabled = false;
+      this.trigger.classList.remove("disabled");
+      this.trigger.disabled = false;
     }
     disable() {
-      this.element.classList.add("disabled");
-      this.element.disabled = true;
+      this.trigger.classList.add("disabled");
+      this.trigger.disabled = true;
     }
   };
 
@@ -404,6 +480,7 @@
   };
 
   // src/page/practice-kana/constants.js
+  var PRACTICE_KANA = "practice/kana";
   var KANA_DAKUTEN_OFFSET = 10;
   var KANA_COMBINATIONS_OFFSET = KANA_DAKUTEN_OFFSET + 5;
   var KANA_ROW_ORDER = [
@@ -484,136 +561,223 @@
         await kanaRow.set(kana[KANA_ROW_ORDER[index]]);
       }
     }
-    async apply(recipe2) {
+    async apply(recipe) {
       await Promise.all([
-        modeDrawKanaButton.set(recipe2.drawKana),
-        modeSelectRomanjiButton.set(recipe2.selectRomanji),
-        modeSelectKanaButton.set(recipe2.selectKana),
-        modeTypeRomanjiButton.set(recipe2.typeRomanji),
-        modeListenTypeButton.set(recipe2.listenType),
-        modeListenDrawButton.set(recipe2.listenDraw),
-        modeWordToKanaButton.set(recipe2.wordToKana),
-        this.applyRecipeOrder(recipe2.order, orderRandomButton, orderFocusButton),
-        sessionSizeInput.set(recipe2.size),
-        learningCardsCheckbox.set(recipe2.learningCards),
-        randomFontCheckbox.set(recipe2.randomFont),
+        modeDrawKanaButton.set(recipe.drawKana),
+        modeSelectRomanjiButton.set(recipe.selectRomanji),
+        modeSelectKanaButton.set(recipe.selectKana),
+        modeTypeRomanjiButton.set(recipe.typeRomanji),
+        modeListenTypeButton.set(recipe.listenType),
+        modeListenDrawButton.set(recipe.listenDraw),
+        modeWordToKanaButton.set(recipe.wordToKana),
+        this.applyRecipeOrder(recipe.order, orderRandomButton, orderFocusButton),
+        sessionSizeInput.set(recipe.size),
+        learningCardsCheckbox.set(recipe.learningCards),
+        randomFontCheckbox.set(recipe.randomFont),
         (async () => {
           await kanaSwitch.set(false);
-          await this.applyKana(recipe2.kana.hiragana);
+          await this.applyKana(recipe.kana.hiragana);
           await kanaSwitch.set(true);
-          await this.applyKana(recipe2.kana.katakana);
+          await this.applyKana(recipe.kana.katakana);
         })()
       ]);
     }
   };
 
-  // src/page/practice-kana/recipe.js
-  var recipe = {
-    drawKana: false,
-    selectRomanji: true,
-    selectKana: true,
-    typeRomanji: false,
-    listenType: false,
-    listenDraw: false,
-    wordToKana: false,
-    order: "random",
-    // "focus" or "random"
-    size: 5,
-    learningCards: false,
-    randomFont: true,
-    kana: {
-      hiragana: {
-        // Basic
-        a: true,
-        ka: false,
-        sa: false,
-        ta: false,
-        na: false,
-        ha: false,
-        ma: false,
-        ya: false,
-        ra: false,
-        wa: false,
-        // Dakuten
-        ga: false,
-        za: false,
-        da: false,
-        ba: false,
-        pa: false,
-        // Combinations
-        kya: false,
-        sha: false,
-        cha: false,
-        nya: false,
-        hya: false,
-        mya: false,
-        rya: false,
-        gya: false,
-        ja: false,
-        bya: false,
-        pya: false
-      },
-      katakana: {
-        a: false,
-        ka: false,
-        sa: false,
-        ta: false,
-        na: false,
-        ha: false,
-        ma: false,
-        ya: false,
-        ra: false,
-        wa: false,
-        // Dakuten
-        ga: false,
-        za: false,
-        da: false,
-        ba: false,
-        pa: false,
-        // Combinations
-        kya: false,
-        sha: false,
-        cha: false,
-        nya: false,
-        hya: false,
-        mya: false,
-        rya: false,
-        gya: false,
-        ja: false,
-        bya: false,
-        pya: false
+  // src/util/settings.js
+  var KEY = "nihondex-plus";
+  var Settings = class _Settings {
+    constructor() {
+      this.values = _Settings.load();
+    }
+    static load() {
+      const stored = localStorage.getItem(KEY);
+      if (stored === null) {
+        return {};
+      }
+      try {
+        return JSON.parse(stored);
+      } catch {
+        return {};
       }
     }
+    get(name, fallback) {
+      return this.values[name] ?? fallback;
+    }
+    set(name, value) {
+      this.values[name] = value;
+      localStorage.setItem(KEY, JSON.stringify(this.values));
+    }
+  };
+  var settings = new Settings();
+
+  // src/util/get.js
+  function get(url) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "GET",
+        url,
+        onload: (response) => {
+          if (response.status < 200 || response.status >= 300) {
+            reject(new Error(`${response.status} ${response.statusText}`));
+            return;
+          }
+          resolve(JSON.parse(response.responseText));
+        },
+        onerror: () => reject(new Error("request failed")),
+        ontimeout: () => reject(new Error("request timed out"))
+      });
+    });
+  }
+
+  // src/settings.js
+  var SERVER = {
+    name: "server",
+    label: "Use result server",
+    value: false
+  };
+  var RESULTS = {
+    name: "results",
+    label: "Result server",
+    value: "http://localhost:3001/results"
+  };
+  var RECIPES = {
+    name: "recipes",
+    label: "Recipe server",
+    value: "http://localhost:3001/recipes"
+  };
+  var CUSTOM = {
+    name: "custom",
+    label: "Custom recipes"
   };
 
+  // src/page/practice-kana/recipes.js
+  var MODES = ["selectRomanji", "selectKana", "typeRomanji"];
+  var GROUPS = [
+    { id: "basics", name: "Basics", rows: KANA_ROW_ORDER.slice(0, KANA_DAKUTEN_OFFSET), size: 20 },
+    { id: "dakuten", name: "Dakuten", rows: KANA_ROW_ORDER.slice(KANA_DAKUTEN_OFFSET, KANA_COMBINATIONS_OFFSET), size: 20 },
+    { id: "combinations", name: "Combinations", rows: KANA_ROW_ORDER.slice(KANA_COMBINATIONS_OFFSET), size: 20 },
+    { id: "all", name: "All", rows: KANA_ROW_ORDER, size: 40 }
+  ];
+  var SCRIPTS = [
+    { id: "hiragana", name: "Hiragana", scripts: ["hiragana"] },
+    { id: "katakana", name: "Katakana", scripts: ["katakana"] },
+    { id: "kana", name: "Kana", scripts: ["hiragana", "katakana"] }
+  ];
+  function rows(enabled) {
+    return Object.fromEntries(KANA_ROW_ORDER.map((row) => [row, enabled.includes(row)]));
+  }
+  function create(script, group) {
+    return {
+      id: `${script.id}-${group.id}`,
+      module: PRACTICE_KANA,
+      name: `${script.name} ${group.name}`,
+      settings: {
+        drawKana: false,
+        selectRomanji: false,
+        selectKana: false,
+        typeRomanji: false,
+        listenType: false,
+        listenDraw: false,
+        wordToKana: false,
+        ...Object.fromEntries(MODES.map((mode) => [mode, true])),
+        order: "random",
+        size: group.size,
+        learningCards: false,
+        randomFont: true,
+        kana: {
+          hiragana: rows(script.scripts.includes("hiragana") ? group.rows : []),
+          katakana: rows(script.scripts.includes("katakana") ? group.rows : [])
+        }
+      }
+    };
+  }
+  var recipes = SCRIPTS.flatMap((script) => GROUPS.map((group) => create(script, group)));
+
+  // src/recipes.js
+  function customRecipes() {
+    return settings.get(CUSTOM.name, recipes);
+  }
+  function storeRecipes(recipes2) {
+    settings.set(CUSTOM.name, recipes2);
+  }
+  function findRecipe(id2) {
+    return customRecipes().find((recipe) => recipe.id === id2) ?? null;
+  }
+  function saveRecipe(recipe) {
+    storeRecipes([...customRecipes().filter((stored) => stored.id !== recipe.id), recipe]);
+  }
+  function deleteRecipe(id2) {
+    storeRecipes(customRecipes().filter((recipe) => recipe.id !== id2));
+  }
+  async function loadRecipes(module) {
+    const local = () => customRecipes().filter((recipe) => recipe.module === module);
+    if (!settings.get(SERVER.name, SERVER.value)) {
+      return local();
+    }
+    const url = new URL(settings.get(RECIPES.name, RECIPES.value));
+    url.searchParams.set("module", module);
+    return get(url.toString()).catch((error) => {
+      console.error(error);
+      return local();
+    });
+  }
+
   // src/page/practice-kana/practice-kana-setup-page.js
+  var STARTED_BY_RECIPE = "recipe";
+  var STARTED_BY_MANUAL = "manual";
+  var MANUAL = {
+    by: STARTED_BY_MANUAL,
+    recipe: null,
+    id: null
+  };
   var PracticeKanaSetupPage = class extends SubPage {
     constructor() {
       super('button[data-walkthrough="kana-start"]');
       this.form = new PracticeKanaSetupForm();
+      this.recipes = [];
+      this.applied = null;
       this.element = null;
-      this.startButton = null;
-      this.onStartClick = (event) => this.onStart(event);
+      this.dropdown = null;
+      this.onStartClick = () => this.onStart();
+    }
+    items() {
+      return this.recipes.map((recipe) => ({ value: recipe.id, label: recipe.name }));
+    }
+    async refresh() {
+      this.recipes = await loadRecipes(PRACTICE_KANA);
+      this.dropdown?.set(this.items());
+      this.dropdown?.enable();
+    }
+    async apply(id2) {
+      const recipe = this.recipes.find((stored) => stored.id === id2);
+      if (recipe === void 0) {
+        return;
+      }
+      this.dropdown.disable();
+      await this.form.apply(recipe.settings);
+      this.applied = { by: STARTED_BY_RECIPE, recipe: recipe.name, id: recipe.id };
+      this.element.click();
     }
     onLoad() {
       this.element = this.reference.get();
       this.element.addEventListener("click", this.onStartClick);
-      this.startButton = new UiButton("Start", async () => {
-        this.startButton.disable();
-        await this.form.apply(recipe);
-        this.startButton.enable();
-      });
-      panel.add(this.startButton);
+      this.applied = null;
+      this.dropdown = new UiDropdown("Recipes", this.items());
+      this.dropdown.addEventListener("select", (event) => this.apply(event.detail));
+      this.dropdown.disable();
+      panel.add(this.dropdown);
+      this.refresh();
     }
     onUnload() {
       this.element.removeEventListener("click", this.onStartClick);
       this.element = null;
-      panel.remove(this.startButton);
-      this.startButton = null;
+      panel.remove(this.dropdown);
+      this.dropdown = null;
     }
-    onStart(event) {
-      this.startButton.disable();
-      this.dispatchEvent(new CustomEvent("start"));
+    onStart() {
+      this.dropdown.disable();
+      this.dispatchEvent(new CustomEvent("start", { detail: this.applied ?? MANUAL }));
     }
   };
 
@@ -1434,13 +1598,15 @@
       this.trackings = [];
       this.startedAt = null;
       this.session = null;
-      this.setupPage.addEventListener("start", () => this.onStart());
+      this.run = null;
+      this.setupPage.addEventListener("start", (event) => this.onStart(event.detail));
       this.gamePage.addEventListener("tracking", (event) => this.onTracking(event.detail));
       this.resultPage.addEventListener("result", (event) => this.onResult(event.detail));
     }
-    onStart() {
+    onStart(run) {
       this.startedAt = /* @__PURE__ */ new Date();
       this.session = id();
+      this.run = run;
     }
     onTracking(trackings) {
       this.trackings = trackings;
@@ -1449,6 +1615,7 @@
       const finishedAt = /* @__PURE__ */ new Date();
       const startedAt = this.startedAt ?? finishedAt;
       const session = this.session ?? id();
+      const run = this.run ?? null;
       const results = this.trackings.map((tracking, index) => ({
         ...tracking,
         nihondex: result.results[index]
@@ -1456,9 +1623,12 @@
       this.trackings = [];
       this.startedAt = null;
       this.session = null;
+      this.run = null;
       this.dispatchEvent(new CustomEvent("session", {
         detail: {
           session,
+          module: PRACTICE_KANA,
+          run,
           started: stamp(startedAt),
           finished: stamp(finishedAt),
           score: result.score,
@@ -1477,36 +1647,6 @@
     onUnload() {
       this.reference.removeClass(NO_ANIMATIONS_CLASS);
       this.hiddenStyles.clear();
-    }
-  };
-
-  // src/ui/ui-input.js
-  var UiInput = class extends UiElement {
-    constructor(label, value, action) {
-      super();
-      this.input = this.element.lastElementChild;
-      this.element.firstElementChild.innerText = label;
-      this.input.value = value;
-      this.input.addEventListener("change", () => action(this.input.value));
-    }
-    render() {
-      const control = document.createElement("label");
-      control.classList.add("form-control", "flex", "flex-col", "gap-1");
-      const text = document.createElement("span");
-      text.classList.add("text-xs");
-      const input = document.createElement("input");
-      input.classList.add("input", "input-xs", "input-bordered");
-      input.type = "text";
-      control.append(text, input);
-      return control;
-    }
-    enable() {
-      this.element.classList.remove("opacity-50");
-      this.input.disabled = false;
-    }
-    disable() {
-      this.element.classList.add("opacity-50");
-      this.input.disabled = true;
     }
   };
 
@@ -1555,18 +1695,54 @@
     }
   };
 
+  // src/ui/ui-input.js
+  var UiInput = class extends UiElement {
+    constructor(label, value = "", type = "text") {
+      super();
+      this.input = this.element.lastElementChild;
+      this.element.firstElementChild.innerText = label;
+      this.input.type = type;
+      this.input.value = value;
+      this.input.addEventListener("change", () => this.emit("change", this.get()));
+    }
+    render() {
+      const control = document.createElement("label");
+      control.classList.add("form-control", "flex", "flex-col", "gap-1");
+      const text = document.createElement("span");
+      text.classList.add("text-xs");
+      const input = document.createElement("input");
+      input.classList.add("input", "input-xs", "input-bordered");
+      control.append(text, input);
+      return control;
+    }
+    get() {
+      return this.input.value;
+    }
+    set(value) {
+      this.input.value = value;
+    }
+    enable() {
+      this.element.classList.remove("opacity-50");
+      this.input.disabled = false;
+    }
+    disable() {
+      this.element.classList.add("opacity-50");
+      this.input.disabled = true;
+    }
+  };
+
   // src/ui/ui-checkbox.js
   var UiCheckbox = class extends UiElement {
-    constructor(label, value, action) {
+    constructor(label, value = false) {
       super();
       this.input = this.element.firstElementChild;
       this.element.lastElementChild.innerText = label;
       this.input.checked = value;
-      this.input.addEventListener("change", () => action(this.input.checked));
+      this.input.addEventListener("change", () => this.emit("change", this.get()));
     }
     render() {
       const control = document.createElement("label");
-      control.classList.add("label", "cursor-pointer", "flex", "flex-row", "gap-2", "justify-start");
+      control.classList.add("label", "cursor-pointer", "flex", "flex-row", "gap-2", "justify-start", "p-0");
       const input = document.createElement("input");
       input.classList.add("checkbox", "checkbox-xs");
       input.type = "checkbox";
@@ -1575,15 +1751,360 @@
       control.append(input, text);
       return control;
     }
+    get() {
+      return this.input.checked;
+    }
+    set(value) {
+      this.input.checked = value;
+    }
+    enable() {
+      this.element.classList.remove("opacity-50");
+      this.input.disabled = false;
+    }
+    disable() {
+      this.element.classList.add("opacity-50");
+      this.input.disabled = true;
+    }
+  };
+
+  // src/ui/ui-list.js
+  var UiList = class extends UiElement {
+    constructor(label, items = []) {
+      super();
+      this.list = this.element.lastElementChild;
+      this.element.firstElementChild.innerText = label;
+      this.set(items);
+    }
+    render() {
+      const control = document.createElement("div");
+      control.classList.add("flex", "flex-col", "gap-1");
+      const text = document.createElement("span");
+      text.classList.add("text-xs", "font-bold");
+      const list = document.createElement("ul");
+      list.classList.add("flex", "flex-col", "gap-1");
+      control.append(text, list);
+      return control;
+    }
+    row({ value, label }) {
+      const item = document.createElement("li");
+      item.classList.add("flex", "flex-row", "items-center", "gap-2");
+      const text = document.createElement("span");
+      text.classList.add("text-xs", "grow", "truncate");
+      text.innerText = label;
+      item.append(
+        text,
+        this.button("Edit", () => this.emit("edit", value)),
+        this.button("Delete", () => this.emit("delete", value))
+      );
+      return item;
+    }
+    button(label, action) {
+      const button = document.createElement("button");
+      button.classList.add("btn", "btn-xs", "btn-ghost");
+      button.innerText = label;
+      button.addEventListener("click", action);
+      return button;
+    }
+    set(items) {
+      this.list.replaceChildren(...items.map((item) => this.row(item)));
+    }
+    enable() {
+      this.element.classList.remove("opacity-50", "pointer-events-none");
+    }
+    disable() {
+      this.element.classList.add("opacity-50", "pointer-events-none");
+    }
+  };
+
+  // src/ui/ui-confirm.js
+  var UiConfirm = class extends UiElement {
+    constructor(label) {
+      super();
+      this.message = this.element.firstElementChild.children[1];
+      this.element.firstElementChild.firstElementChild.innerText = label;
+    }
+    render() {
+      const dialog = document.createElement("dialog");
+      dialog.classList.add("modal");
+      const box = document.createElement("div");
+      box.classList.add("modal-box", "flex", "flex-col", "gap-2");
+      const title = document.createElement("h3");
+      title.classList.add("text-sm", "font-bold");
+      const message = document.createElement("span");
+      message.classList.add("text-xs");
+      const actions = document.createElement("form");
+      actions.method = "dialog";
+      actions.classList.add("flex", "flex-row", "gap-2", "justify-end");
+      const cancel = document.createElement("button");
+      cancel.classList.add("btn", "btn-xs");
+      cancel.innerText = "Cancel";
+      const confirm = document.createElement("button");
+      confirm.classList.add("btn", "btn-xs", "btn-error");
+      confirm.innerText = "Delete";
+      confirm.addEventListener("click", () => this.emit("confirm"));
+      actions.append(cancel, confirm);
+      box.append(title, message, actions);
+      dialog.append(box);
+      return dialog;
+    }
+    open(message) {
+      this.message.innerText = message;
+      this.element.showModal();
+    }
+  };
+
+  // src/ui/ui-radio.js
+  var UiRadio = class extends UiElement {
+    constructor(label, options = [], value = null) {
+      super();
+      this.name = id();
+      this.options = this.element.lastElementChild;
+      this.element.firstElementChild.innerText = label;
+      this.set(options, value);
+    }
+    render() {
+      const control = document.createElement("div");
+      control.classList.add("flex", "flex-col", "gap-1");
+      const text = document.createElement("span");
+      text.classList.add("text-xs", "font-bold");
+      const options = document.createElement("div");
+      options.classList.add("flex", "flex-row", "gap-3");
+      control.append(text, options);
+      return control;
+    }
+    set(options, value = this.get()) {
+      this.options.replaceChildren(...options.map((option) => this.option(option, value)));
+    }
+    option({ value, label }, checked) {
+      const control = document.createElement("label");
+      control.classList.add("label", "cursor-pointer", "flex", "flex-row", "gap-1", "p-0");
+      const input = document.createElement("input");
+      input.classList.add("radio", "radio-xs");
+      input.type = "radio";
+      input.name = this.name;
+      input.value = value;
+      input.checked = value === checked;
+      input.addEventListener("change", () => this.emit("change", this.get()));
+      const text = document.createElement("span");
+      text.classList.add("text-xs");
+      text.innerText = label;
+      control.append(input, text);
+      return control;
+    }
+    get() {
+      return this.options.querySelector("input:checked")?.value ?? null;
+    }
+    select(value) {
+      for (const input of this.options.querySelectorAll("input")) {
+        input.checked = input.value === value;
+      }
+    }
+    enable() {
+      this.element.classList.remove("opacity-50");
+      for (const input of this.options.querySelectorAll("input")) {
+        input.disabled = false;
+      }
+    }
+    disable() {
+      this.element.classList.add("opacity-50");
+      for (const input of this.options.querySelectorAll("input")) {
+        input.disabled = true;
+      }
+    }
+  };
+
+  // src/ui/ui-fieldset.js
+  var UiFieldset = class extends UiElement {
+    constructor(label, columns = 2) {
+      super();
+      this.children = [];
+      this.content = this.element.lastElementChild;
+      this.element.firstElementChild.innerText = label;
+      this.content.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+    }
+    render() {
+      const fieldset = document.createElement("div");
+      fieldset.classList.add("flex", "flex-col", "gap-1");
+      const text = document.createElement("span");
+      text.classList.add("text-xs", "font-bold");
+      const content = document.createElement("div");
+      content.classList.add("grid", "gap-x-2");
+      fieldset.append(text, content);
+      return fieldset;
+    }
+    add(child) {
+      this.children.push(child);
+      child.mount(this.content);
+    }
+  };
+
+  // src/page/practice-kana/recipe-editor.js
+  var MODES2 = [
+    ["drawKana", "Draw kana"],
+    ["selectRomanji", "Multiple choice"],
+    ["selectKana", "Romaji to kana"],
+    ["typeRomanji", "Kana to romaji"],
+    ["listenType", "Listen & type"],
+    ["listenDraw", "Listen & draw"],
+    ["wordToKana", "Word to kana"]
+  ];
+  var ORDER_RANDOM = "random";
+  var ORDER_FOCUS = "focus";
+  var ORDERS = [
+    { value: ORDER_RANDOM, label: "Random" },
+    { value: ORDER_FOCUS, label: "Focus" }
+  ];
+  var RecipeEditor = class _RecipeEditor extends EventTarget {
+    constructor() {
+      super();
+      this.recipe = null;
+      this.modal = new UiModal("Recipe");
+      this.name = new UiInput("Name");
+      this.size = new UiInput("Size", "20", "number");
+      this.order = new UiRadio("Order", ORDERS, ORDER_RANDOM);
+      this.saveButton = new UiButton("Save");
+      this.saveButton.addEventListener("click", () => this.save());
+      this.modes = new Map(MODES2.map(([mode]) => [mode, new UiCheckbox(_RecipeEditor.label(mode))]));
+      this.hiragana = new Map(KANA_ROW_ORDER.map((row) => [row, new UiCheckbox(row)]));
+      this.katakana = new Map(KANA_ROW_ORDER.map((row) => [row, new UiCheckbox(row)]));
+      this.modal.add(this.name);
+      this.modal.add(this.size);
+      this.modal.add(this.order);
+      this.modal.add(_RecipeEditor.fieldset("Modes", this.modes, 2));
+      this.modal.add(_RecipeEditor.fieldset("Hiragana", this.hiragana, 4));
+      this.modal.add(_RecipeEditor.fieldset("Katakana", this.katakana, 4));
+      this.modal.add(this.saveButton);
+    }
+    static label(mode) {
+      return MODES2.find(([name]) => name === mode)[1];
+    }
+    static fieldset(label, checkboxes, columns) {
+      const fieldset = new UiFieldset(label, columns);
+      for (const checkbox of checkboxes.values()) {
+        fieldset.add(checkbox);
+      }
+      return fieldset;
+    }
+    static values(checkboxes) {
+      return Object.fromEntries([...checkboxes].map(([key, checkbox]) => [key, checkbox.get()]));
+    }
+    static fill(checkboxes, values = {}) {
+      for (const [key, checkbox] of checkboxes) {
+        checkbox.set(values[key] === true);
+      }
+    }
+    mount(parent) {
+      this.modal.mount(parent);
+    }
+    open(recipe) {
+      this.recipe = recipe;
+      const settings2 = recipe?.settings ?? {};
+      this.name.set(recipe?.name ?? "");
+      this.size.set(settings2.size ?? 20);
+      this.order.select(settings2.order ?? ORDER_RANDOM);
+      _RecipeEditor.fill(this.modes, settings2);
+      _RecipeEditor.fill(this.hiragana, settings2.kana?.hiragana);
+      _RecipeEditor.fill(this.katakana, settings2.kana?.katakana);
+      this.modal.open();
+    }
+    save() {
+      this.dispatchEvent(new CustomEvent("save", { detail: {
+        id: this.recipe?.id ?? id(),
+        module: PRACTICE_KANA,
+        name: this.name.get(),
+        settings: {
+          ..._RecipeEditor.values(this.modes),
+          order: this.order.get(),
+          size: Number(this.size.get()),
+          learningCards: false,
+          randomFont: true,
+          kana: {
+            hiragana: _RecipeEditor.values(this.hiragana),
+            katakana: _RecipeEditor.values(this.katakana)
+          }
+        }
+      } }));
+      this.modal.close();
+    }
+  };
+
+  // src/settings-modal.js
+  function toggle(element, enabled) {
+    if (enabled) {
+      element.enable();
+      return;
+    }
+    element.disable();
+  }
+  var SettingsModal = class {
+    constructor() {
+      this.pending = null;
+      this.modal = new UiModal("Settings");
+      this.confirm = new UiConfirm("Delete recipe");
+      this.editor = new RecipeEditor();
+      this.server = new UiCheckbox(SERVER.label, settings.get(SERVER.name, SERVER.value));
+      this.results = new UiInput(RESULTS.label, settings.get(RESULTS.name, RESULTS.value));
+      this.recipes = new UiInput(RECIPES.label, settings.get(RECIPES.name, RECIPES.value));
+      this.list = new UiList(CUSTOM.label, this.items());
+      this.add = new UiButton("Add recipe");
+      this.listen();
+      this.modal.add(this.server);
+      this.modal.add(this.results);
+      this.modal.add(this.recipes);
+      this.modal.add(this.list);
+      this.modal.add(this.add);
+      this.update(settings.get(SERVER.name, SERVER.value));
+    }
+    items() {
+      return customRecipes().map((recipe) => ({ value: recipe.id, label: recipe.name }));
+    }
+    listen() {
+      this.server.addEventListener("change", (event) => {
+        settings.set(SERVER.name, event.detail);
+        this.update(event.detail);
+      });
+      this.results.addEventListener("change", (event) => settings.set(RESULTS.name, event.detail));
+      this.recipes.addEventListener("change", (event) => settings.set(RECIPES.name, event.detail));
+      this.add.addEventListener("click", () => this.editor.open(null));
+      this.list.addEventListener("edit", (event) => this.editor.open(findRecipe(event.detail)));
+      this.list.addEventListener("delete", (event) => {
+        this.pending = event.detail;
+        this.confirm.open(`Delete "${findRecipe(this.pending).name}"?`);
+      });
+      this.confirm.addEventListener("confirm", () => {
+        deleteRecipe(this.pending);
+        this.list.set(this.items());
+      });
+      this.editor.addEventListener("save", (event) => {
+        saveRecipe(event.detail);
+        this.list.set(this.items());
+      });
+    }
+    update(server) {
+      toggle(this.results, server);
+      toggle(this.recipes, server);
+      toggle(this.list, !server);
+      toggle(this.add, !server);
+    }
+    mount(parent) {
+      this.modal.mount(parent);
+      this.confirm.mount(parent);
+      this.editor.mount(parent);
+    }
+    open() {
+      this.modal.open();
+    }
   };
 
   // src/ui/ui-textarea.js
+  var ROWS = 10;
   var UiTextarea = class extends UiElement {
-    constructor(label, rows = 12) {
+    constructor(label, value = "") {
       super();
       this.textarea = this.element.lastElementChild;
       this.element.firstElementChild.innerText = label;
-      this.textarea.rows = rows;
+      this.textarea.value = value;
+      this.textarea.addEventListener("change", () => this.emit("change", this.get()));
     }
     render() {
       const control = document.createElement("label");
@@ -1593,8 +2114,12 @@
       const textarea = document.createElement("textarea");
       textarea.classList.add("textarea", "textarea-xs", "textarea-bordered", "font-mono");
       textarea.readOnly = true;
+      textarea.rows = ROWS;
       control.append(text, textarea);
       return control;
+    }
+    get() {
+      return this.textarea.value;
     }
     set(value) {
       this.textarea.value = value;
@@ -1604,32 +2129,22 @@
     }
   };
 
-  // src/util/settings.js
-  var KEY = "nihondex-plus";
-  var Settings = class _Settings {
+  // src/results-modal.js
+  var ResultsModal = class {
     constructor() {
-      this.values = _Settings.load();
+      this.modal = new UiModal("Results");
+      this.output = new UiTextarea("Session");
+      this.modal.add(this.output);
     }
-    static load() {
-      const stored = localStorage.getItem(KEY);
-      if (stored === null) {
-        return {};
-      }
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return {};
-      }
+    mount(parent) {
+      this.modal.mount(parent);
     }
-    get(name, fallback) {
-      return this.values[name] ?? fallback;
-    }
-    set(name, value) {
-      this.values[name] = value;
-      localStorage.setItem(KEY, JSON.stringify(this.values));
+    show(session) {
+      this.output.set(JSON.stringify(session, null, 4));
+      this.modal.open();
+      this.output.select();
     }
   };
-  var settings = new Settings();
 
   // src/util/post.js
   function post(url, payload) {
@@ -1652,62 +2167,30 @@
     });
   }
 
-  // src/settings.js
-  var SERVER = {
-    name: "server",
-    label: "Use result server",
-    value: false
-  };
-  var RESULTS = {
-    name: "results",
-    label: "Result server",
-    value: "http://localhost:3001/results"
-  };
-
   // src/main.js
-  function toggle(element, enabled) {
-    if (enabled) {
-      element.enable();
-      return;
-    }
-    element.disable();
-  }
-  async function onSession(session, output, results) {
+  async function onSession(session, results) {
     if (settings.get(SERVER.name, SERVER.value)) {
       await post(settings.get(RESULTS.name, RESULTS.value), session);
       return;
     }
-    output.set(JSON.stringify(session, null, 4));
-    results.open();
-    output.select();
+    results.show(session);
   }
   async function main() {
     disableAnimations();
     panel.mount(document.body);
-    const modal = new UiModal("Settings");
-    const server = settings.get(SERVER.name, SERVER.value);
-    const url = new UiInput(
-      RESULTS.label,
-      settings.get(RESULTS.name, RESULTS.value),
-      (value) => settings.set(RESULTS.name, value)
-    );
-    modal.add(new UiCheckbox(SERVER.label, server, (value) => {
-      settings.set(SERVER.name, value);
-      toggle(url, value);
-    }));
-    modal.add(url);
-    toggle(url, server);
-    modal.mount(document.body);
-    panel.add(new UiButton("Settings", () => modal.open()));
-    const output = new UiTextarea("Session");
-    const results = new UiModal("Results");
-    results.add(output);
+    const configuration = new SettingsModal();
+    const results = new ResultsModal();
+    configuration.mount(document.body);
     results.mount(document.body);
+    const button = new UiButton("Settings");
+    button.addEventListener("click", () => configuration.open());
+    panel.add(button);
     const page = new PracticeKanaPage();
-    page.addEventListener("session", (event) => onSession(event.detail, output, results));
+    page.addEventListener("session", (event) => onSession(event.detail, results));
     const router = new Router();
-    router.add("/practice/kana", page);
+    router.add(`/${PRACTICE_KANA}`, page);
     router.start();
+    observer.notify();
   }
   (() => {
     main().catch((error) => {

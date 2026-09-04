@@ -1,13 +1,14 @@
 import {UiElement} from './ui-element.js';
 
 export class UiInput extends UiElement {
-    constructor(label, value, action) {
+    constructor(label, value = '', type = 'text') {
         super();
 
         this.input = this.element.lastElementChild;
         this.element.firstElementChild.innerText = label;
+        this.input.type = type;
         this.input.value = value;
-        this.input.addEventListener('change', () => action(this.input.value));
+        this.input.addEventListener('change', () => this.emit('change', this.get()));
     }
 
     render() {
@@ -22,11 +23,18 @@ export class UiInput extends UiElement {
         const input = document.createElement('input');
 
         input.classList.add('input', 'input-xs', 'input-bordered');
-        input.type = 'text';
 
         control.append(text, input);
 
         return control;
+    }
+
+    get() {
+        return this.input.value;
+    }
+
+    set(value) {
+        this.input.value = value;
     }
 
     enable() {

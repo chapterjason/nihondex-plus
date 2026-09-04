@@ -1,12 +1,15 @@
 import {UiElement} from './ui-element.js';
 
+const ROWS = 10;
+
 export class UiTextarea extends UiElement {
-    constructor(label, rows = 12) {
+    constructor(label, value = '') {
         super();
 
         this.textarea = this.element.lastElementChild;
         this.element.firstElementChild.innerText = label;
-        this.textarea.rows = rows;
+        this.textarea.value = value;
+        this.textarea.addEventListener('change', () => this.emit('change', this.get()));
     }
 
     render() {
@@ -22,10 +25,15 @@ export class UiTextarea extends UiElement {
 
         textarea.classList.add('textarea', 'textarea-xs', 'textarea-bordered', 'font-mono');
         textarea.readOnly = true;
+        textarea.rows = ROWS;
 
         control.append(text, textarea);
 
         return control;
+    }
+
+    get() {
+        return this.textarea.value;
     }
 
     set(value) {

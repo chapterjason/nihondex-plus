@@ -1,11 +1,13 @@
 import {createServer} from 'node:http';
-import {mkdirSync, readdirSync, statSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, readdirSync, statSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 
 const PORT = Number(process.env.PORT ?? 3001);
 
 const HOSTS = ['127.0.0.1', '::1'];
 const DIRECTORY = join(process.cwd(), 'results');
+
+const RECIPES = join(process.cwd(), 'recipes');
 
 const CORS = {
     'access-control-allow-origin': '*',
@@ -16,6 +18,14 @@ const CORS = {
 };
 
 mkdirSync(DIRECTORY, {recursive: true});
+mkdirSync(RECIPES, {recursive: true});
+
+function listRecipes(module) {
+    return readdirSync(RECIPES)
+        .filter((name) => name.endsWith('.json'))
+        .map((name) => JSON.parse(readFileSync(join(RECIPES, name), 'utf8')))
+        .filter((recipe) => module === null || recipe.module === module);
+}
 
 function listResults() {
     return readdirSync(DIRECTORY)
@@ -53,6 +63,13 @@ function handle(request, response) {
             response.writeHead(200, {...CORS, 'content-type': 'application/json'});
             response.end(JSON.stringify({name}));
         });
+
+        return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/recipes') {
+        response.writeHead(200, {...CORS, 'content-type': 'application/json'});
+        response.end(JSON.stringify(listRecipes(url.searchParams.get('module')), null, 2));
 
         return;
     }

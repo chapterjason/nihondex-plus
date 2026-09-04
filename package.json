@@ -1,6 +1,6 @@
 {
   "name": "nihondex-plus",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "private": true,
   "type": "module",
   "license": "ISC",
@@ -11,7 +11,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
-    "results": "node scripts/result-server.mjs",
+    "server": "node scripts/server.mjs",
     "change-tracking": "node scripts/change-tracking-server.mjs"
   },
   "devDependencies": {

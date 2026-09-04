@@ -1,3 +1,5 @@
+export const PRACTICE_KANA = 'practice/kana';
+
 export const KANA_DAKUTEN_OFFSET = 10;
 export const KANA_COMBINATIONS_OFFSET = KANA_DAKUTEN_OFFSET + 5;
 export const KANA_ROW_ORDER = [

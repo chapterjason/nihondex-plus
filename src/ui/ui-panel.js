@@ -12,8 +12,9 @@ export class UiPanel extends UiElement {
     render() {
         const card = document.createElement('div');
 
-        card.classList.add('card', 'bg-base-100', 'rounded-xs', 'shadow-xs');
+        card.classList.add('card', 'bg-base-100', 'rounded-xs', 'shadow-xs', 'overflow-visible');
         card.style.position = 'fixed';
+        card.style.zIndex = '200';
         card.style.bottom = '0.5rem';
         card.style.right = '0.5rem';
 

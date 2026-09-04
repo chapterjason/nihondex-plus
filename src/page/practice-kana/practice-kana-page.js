@@ -6,6 +6,7 @@ import {PracticeKanaGamePage} from './practice-kana-game-page.js';
 import {PracticeKanaResultPage} from './practice-kana-result-page.js';
 import {stamp} from '../../util/stamp.js';
 import {id} from '../../util/id.js';
+import {PRACTICE_KANA} from './constants.js';
 
 export class PracticeKanaPage extends Page {
     constructor() {
@@ -19,15 +20,17 @@ export class PracticeKanaPage extends Page {
         this.trackings = [];
         this.startedAt = null;
         this.session = null;
+        this.run = null;
 
-        this.setupPage.addEventListener('start', () => this.onStart());
+        this.setupPage.addEventListener('start', (event) => this.onStart(event.detail));
         this.gamePage.addEventListener('tracking', (event) => this.onTracking(event.detail));
         this.resultPage.addEventListener('result', (event) => this.onResult(event.detail));
     }
 
-    onStart() {
+    onStart(run) {
         this.startedAt = new Date();
         this.session = id();
+        this.run = run;
     }
 
     onTracking(trackings) {
@@ -38,6 +41,7 @@ export class PracticeKanaPage extends Page {
         const finishedAt = new Date();
         const startedAt = this.startedAt ?? finishedAt;
         const session = this.session ?? id();
+        const run = this.run ?? null;
 
         const results = this.trackings.map((tracking, index) => ({
             ...tracking,
@@ -47,10 +51,13 @@ export class PracticeKanaPage extends Page {
         this.trackings = [];
         this.startedAt = null;
         this.session = null;
+        this.run = null;
 
         this.dispatchEvent(new CustomEvent('session', {
             detail: {
                 session,
+                module: PRACTICE_KANA,
+                run,
                 started: stamp(startedAt),
                 finished: stamp(finishedAt),
                 score: result.score,
