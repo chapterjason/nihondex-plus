@@ -3,7 +3,8 @@ export class Router {
         this.pages = new Map();
         this.current = null;
         this.originals = new Map();
-        this.onPopState = () => this.navigate();
+        this.frame = null;
+        this.onPopState = () => this.schedule();
     }
 
     add(path, page) {
@@ -20,7 +21,7 @@ export class Router {
                 apply: (target, thisArg, argArray) => {
                     const result = target.apply(thisArg, argArray);
 
-                    this.navigate();
+                    this.schedule();
 
                     return result;
                 },
@@ -29,7 +30,7 @@ export class Router {
 
         window.addEventListener('popstate', this.onPopState);
 
-        this.navigate();
+        this.schedule();
     }
 
     stop() {
@@ -40,6 +41,24 @@ export class Router {
         this.originals.clear();
 
         window.removeEventListener('popstate', this.onPopState);
+
+        if (this.frame !== null) {
+            cancelAnimationFrame(this.frame);
+
+            this.frame = null;
+        }
+    }
+
+    schedule() {
+        if (this.frame !== null) {
+            return;
+        }
+
+        this.frame = requestAnimationFrame(() => {
+            this.frame = null;
+
+            this.navigate();
+        });
     }
 
     navigate() {

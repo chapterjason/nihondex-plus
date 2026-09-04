@@ -1,5 +1,4 @@
 import {SubPage} from '../../core/sub-page.js';
-import {ButtonElementReference} from '../../dom/button-element-reference.js';
 import {panel} from '../../ui/panel.js';
 import {UiButton} from '../../ui/ui-button.js';
 import {PracticeKanaSetupForm} from './practice-kana-setup-form.js';
@@ -7,7 +6,7 @@ import {recipe} from './recipe.js';
 
 export class PracticeKanaSetupPage extends SubPage {
     constructor() {
-        super(new ButtonElementReference('button[data-walkthrough="kana-start"]'));
+        super('button[data-walkthrough="kana-start"]');
 
         this.form = new PracticeKanaSetupForm();
         this.element = null;

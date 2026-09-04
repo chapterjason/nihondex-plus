@@ -17,7 +17,8 @@
       this.pages = /* @__PURE__ */ new Map();
       this.current = null;
       this.originals = /* @__PURE__ */ new Map();
-      this.onPopState = () => this.navigate();
+      this.frame = null;
+      this.onPopState = () => this.schedule();
     }
     add(path, page) {
       this.pages.set(path, page);
@@ -29,13 +30,13 @@
         window.history[method] = new Proxy(original, {
           apply: (target, thisArg, argArray) => {
             const result = target.apply(thisArg, argArray);
-            this.navigate();
+            this.schedule();
             return result;
           }
         });
       }
       window.addEventListener("popstate", this.onPopState);
-      this.navigate();
+      this.schedule();
     }
     stop() {
       for (const [method, original] of this.originals) {
@@ -43,6 +44,19 @@
       }
       this.originals.clear();
       window.removeEventListener("popstate", this.onPopState);
+      if (this.frame !== null) {
+        cancelAnimationFrame(this.frame);
+        this.frame = null;
+      }
+    }
+    schedule() {
+      if (this.frame !== null) {
+        return;
+      }
+      this.frame = requestAnimationFrame(() => {
+        this.frame = null;
+        this.navigate();
+      });
     }
     navigate() {
       const page = this.pages.get(window.location.pathname) ?? null;
@@ -110,13 +124,34 @@
   // src/ui/panel.js
   var panel = new UiPanel("Nihondex Plus");
 
-  // src/core/page.js
-  var Page = class extends EventTarget {
-    load() {
+  // src/core/dom-observer.js
+  var DomObserver = class extends EventTarget {
+    constructor() {
+      super();
+      this.listeners = 0;
+      this.observer = new MutationObserver(() => this.notify());
     }
-    unload() {
+    addEventListener(type, listener, options) {
+      super.addEventListener(type, listener, options);
+      this.listeners += 1;
+      if (this.listeners === 1) {
+        this.observer.observe(document.body, { subtree: true, childList: true });
+      }
+    }
+    removeEventListener(type, listener, options) {
+      super.removeEventListener(type, listener, options);
+      this.listeners -= 1;
+      if (this.listeners === 0) {
+        this.observer.disconnect();
+      }
+    }
+    notify() {
+      this.dispatchEvent(new CustomEvent("mutation"));
     }
   };
+
+  // src/core/observer.js
+  var observer = new DomObserver();
 
   // src/core/now.js
   function now() {
@@ -181,12 +216,14 @@
     }
   };
 
-  // src/core/sub-page.js
-  var SubPage = class extends Page {
-    constructor(reference) {
+  // src/core/page.js
+  var Page = class extends EventTarget {
+    constructor(selector) {
       super();
-      this.reference = reference;
+      this.reference = new ElementReference(selector);
       this.loaded = false;
+      this.onCheck = () => this.check();
+      observer.addEventListener("mutation", this.onCheck);
     }
     check() {
       if (this.reference.exists()) {
@@ -212,6 +249,32 @@
     onLoad() {
     }
     onUnload() {
+    }
+  };
+
+  // src/core/sub-page.js
+  var SubPage = class extends Page {
+  };
+
+  // src/ui/ui-button.js
+  var UiButton = class extends UiElement {
+    constructor(label, action) {
+      super();
+      this.element.innerText = label;
+      this.element.addEventListener("click", action);
+    }
+    render() {
+      const button = document.createElement("button");
+      button.classList.add("btn", "btn-xs", "btn-primary");
+      return button;
+    }
+    enable() {
+      this.element.classList.remove("disabled");
+      this.element.disabled = false;
+    }
+    disable() {
+      this.element.classList.add("disabled");
+      this.element.disabled = true;
     }
   };
 
@@ -255,28 +318,6 @@
       } else {
         await this.ensureInactive();
       }
-    }
-  };
-
-  // src/ui/ui-button.js
-  var UiButton = class extends UiElement {
-    constructor(label, action) {
-      super();
-      this.element.innerText = label;
-      this.element.addEventListener("click", action);
-    }
-    render() {
-      const button = document.createElement("button");
-      button.classList.add("btn", "btn-xs", "btn-primary");
-      return button;
-    }
-    enable() {
-      this.element.classList.remove("disabled");
-      this.element.disabled = false;
-    }
-    disable() {
-      this.element.classList.add("disabled");
-      this.element.disabled = true;
     }
   };
 
@@ -542,7 +583,7 @@
   // src/page/practice-kana/practice-kana-setup-page.js
   var PracticeKanaSetupPage = class extends SubPage {
     constructor() {
-      super(new ButtonElementReference('button[data-walkthrough="kana-start"]'));
+      super('button[data-walkthrough="kana-start"]');
       this.form = new PracticeKanaSetupForm();
       this.element = null;
       this.startButton = null;
@@ -598,18 +639,34 @@
     return style;
   }
 
+  // src/util/hidden-styles.js
+  var HiddenStyles = class {
+    constructor() {
+      this.styles = [];
+    }
+    add(selector) {
+      this.styles.push(hideElements(selector));
+    }
+    clear() {
+      for (const style of this.styles) {
+        style.remove();
+      }
+      this.styles = [];
+    }
+  };
+
   // src/page/practice-kana/kana-game.js
   var KanaGame = class extends EventTarget {
     constructor() {
       super();
       this.started = false;
-      this.observer = new MutationObserver(() => this.check());
+      this.onCheck = () => this.check();
     }
     start() {
-      this.observer.observe(document.body, { subtree: true, childList: true });
+      observer.addEventListener("mutation", this.onCheck);
     }
     stop() {
-      this.observer.disconnect();
+      observer.removeEventListener("mutation", this.onCheck);
     }
     check() {
       if (document.querySelector("[active-system]") !== null) {
@@ -628,16 +685,11 @@
   // src/page/practice-kana/practice-kana-page.js
   var PracticeKanaPage = class extends Page {
     constructor() {
-      super();
-      this.hiddenStyles = [];
+      super(".kana-practice-page");
+      this.hiddenStyles = new HiddenStyles();
       this.kanaGame = null;
-      this.page = new ElementReference(".kana-practice-page");
       this.setupPage = new PracticeKanaSetupPage();
-      this.observer = new MutationObserver(() => this.check());
       this.setupPage.addEventListener("start", () => this.start());
-    }
-    check() {
-      this.setupPage.check();
     }
     start() {
       this.kanaGame = new KanaGame();
@@ -646,27 +698,18 @@
     }
     end() {
       this.kanaGame = null;
-      this.check();
     }
-    load() {
-      this.page.addClass(NO_ANIMATIONS_CLASS);
-      this.hiddenStyles = [
-        hideElements("canvas[data-confetti]"),
-        hideElements(".animate-subtle-bounce")
-      ];
-      this.observer.observe(document.body, { subtree: true, childList: true });
-      this.check();
+    onLoad() {
+      this.reference.addClass(NO_ANIMATIONS_CLASS);
+      this.hiddenStyles.add("canvas[data-confetti]");
+      this.hiddenStyles.add(".animate-subtle-bounce");
     }
-    unload() {
-      this.observer.disconnect();
+    onUnload() {
       this.kanaGame?.stop();
       this.kanaGame = null;
       this.setupPage.unload();
-      this.page.removeClass(NO_ANIMATIONS_CLASS);
-      for (const style of this.hiddenStyles) {
-        style.remove();
-      }
-      this.hiddenStyles = [];
+      this.reference.removeClass(NO_ANIMATIONS_CLASS);
+      this.hiddenStyles.clear();
     }
   };
 

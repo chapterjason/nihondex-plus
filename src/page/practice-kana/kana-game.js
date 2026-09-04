@@ -1,17 +1,19 @@
+import {observer} from '../../core/observer.js';
+
 export class KanaGame extends EventTarget {
     constructor() {
         super();
 
         this.started = false;
-        this.observer = new MutationObserver(() => this.check());
+        this.onCheck = () => this.check();
     }
 
     start() {
-        this.observer.observe(document.body, {subtree: true, childList: true});
+        observer.addEventListener('mutation', this.onCheck);
     }
 
     stop() {
-        this.observer.disconnect();
+        observer.removeEventListener('mutation', this.onCheck);
     }
 
     check() {
