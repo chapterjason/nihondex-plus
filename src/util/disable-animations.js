@@ -11,6 +11,10 @@ export function disableAnimations() {
             transition: none !important;
             animation: none !important;
         }
+
+        .animate-fade-in {
+            opacity: 1 !important;
+        }
     `;
 
     document.head.append(style);
