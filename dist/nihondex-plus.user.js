@@ -59,6 +59,57 @@
     }
   };
 
+  // src/ui/ui-element.js
+  var UiElement = class {
+    constructor() {
+      this.element = this.render();
+    }
+    render() {
+      return document.createElement("div");
+    }
+    mount(parent) {
+      parent.append(this.element);
+    }
+    unmount() {
+      this.element.remove();
+    }
+  };
+
+  // src/ui/ui-panel.js
+  var UiPanel = class extends UiElement {
+    constructor(label) {
+      super();
+      this.children = [];
+      this.body = this.element.firstElementChild;
+      this.body.firstElementChild.innerText = label;
+    }
+    render() {
+      const card = document.createElement("div");
+      card.classList.add("card", "bg-base-100", "rounded-xs", "shadow-xs");
+      card.style.position = "fixed";
+      card.style.bottom = "0.5rem";
+      card.style.right = "0.5rem";
+      const body = document.createElement("div");
+      body.classList.add("card-body", "p-2");
+      const title = document.createElement("span");
+      title.classList.add("text-sm", "font-bold");
+      body.append(title);
+      card.append(body);
+      return card;
+    }
+    add(child) {
+      this.children.push(child);
+      child.mount(this.body);
+    }
+    remove(child) {
+      this.children = this.children.filter((stored) => stored !== child);
+      child.unmount();
+    }
+  };
+
+  // src/ui/panel.js
+  var panel = new UiPanel("Nihondex Plus");
+
   // src/core/page.js
   var Page = class extends EventTarget {
     load() {
@@ -105,10 +156,18 @@
       return this.get().classList.contains(className);
     }
     addClass(className) {
-      this.get().classList.add(className);
+      const element = this.get();
+      if (element === null) {
+        return;
+      }
+      element.classList.add(className);
     }
     removeClass(className) {
-      this.get().classList.remove(className);
+      const element = this.get();
+      if (element === null) {
+        return;
+      }
+      element.classList.remove(className);
     }
     click() {
       const element = this.get();
@@ -199,58 +258,25 @@
     }
   };
 
-  // src/ui/wrapper.js
-  var Wrapper = class _Wrapper {
-    static card = null;
-    static body = null;
-    static buttons = [];
-    static create() {
-      _Wrapper.card = document.createElement("div");
-      _Wrapper.card.classList.add("card", "bg-base-100", "rounded-xs", "shadow-xs");
-      _Wrapper.card.style.position = "fixed";
-      _Wrapper.card.style.bottom = "0.5rem";
-      _Wrapper.card.style.right = "0.5rem";
-      _Wrapper.body = document.createElement("div");
-      _Wrapper.body.classList.add("card-body", "p-2");
-      const label = document.createElement("span");
-      label.classList.add("text-sm", "font-bold");
-      label.innerText = "Nihondex Plus";
-      _Wrapper.body.append(label);
-      _Wrapper.card.append(_Wrapper.body);
-      document.body.append(_Wrapper.card);
+  // src/ui/ui-button.js
+  var UiButton = class extends UiElement {
+    constructor(label, action) {
+      super();
+      this.element.innerText = label;
+      this.element.addEventListener("click", action);
     }
-    static get() {
-      if (_Wrapper.body === null) {
-        _Wrapper.create();
-      }
-      return _Wrapper.body;
-    }
-    static addButton(label, action) {
+    render() {
       const button = document.createElement("button");
-      button.innerText = label;
       button.classList.add("btn", "btn-xs", "btn-primary");
-      button.addEventListener("click", action.bind(button));
-      _Wrapper.get().append(button);
-      _Wrapper.buttons.push(button);
-      return new ButtonElementReference(button);
+      return button;
     }
-    static removeButton(button) {
-      button.remove();
-      _Wrapper.buttons = _Wrapper.buttons.filter((stored) => stored !== button);
+    enable() {
+      this.element.classList.remove("disabled");
+      this.element.disabled = false;
     }
-    static clear() {
-      for (const button of _Wrapper.buttons) {
-        button.remove();
-      }
-      _Wrapper.buttons = [];
-    }
-    static remove() {
-      _Wrapper.clear();
-      if (_Wrapper.card !== null) {
-        _Wrapper.card.remove();
-      }
-      _Wrapper.card = null;
-      _Wrapper.body = null;
+    disable() {
+      this.element.classList.add("disabled");
+      this.element.disabled = true;
     }
   };
 
@@ -525,16 +551,17 @@
     onLoad() {
       this.element = this.reference.get();
       this.element.addEventListener("click", this.onStartClick);
-      this.startButton = Wrapper.addButton("Start", async () => {
+      this.startButton = new UiButton("Start", async () => {
         this.startButton.disable();
         await this.form.apply(recipe);
         this.startButton.enable();
       });
+      panel.add(this.startButton);
     }
     onUnload() {
       this.element.removeEventListener("click", this.onStartClick);
       this.element = null;
-      Wrapper.removeButton(this.startButton.get());
+      panel.remove(this.startButton);
       this.startButton = null;
     }
     onStart(event) {
@@ -613,7 +640,6 @@
       this.setupPage.check();
     }
     start() {
-      this.stopGame();
       this.kanaGame = new KanaGame();
       this.kanaGame.addEventListener("end", () => this.end());
       this.kanaGame.start();
@@ -621,13 +647,6 @@
     end() {
       this.kanaGame = null;
       this.check();
-    }
-    stopGame() {
-      if (this.kanaGame === null) {
-        return;
-      }
-      this.kanaGame.stop();
-      this.kanaGame = null;
     }
     load() {
       this.page.addClass(NO_ANIMATIONS_CLASS);
@@ -640,7 +659,8 @@
     }
     unload() {
       this.observer.disconnect();
-      this.stopGame();
+      this.kanaGame?.stop();
+      this.kanaGame = null;
       this.setupPage.unload();
       this.page.removeClass(NO_ANIMATIONS_CLASS);
       for (const style of this.hiddenStyles) {
@@ -653,6 +673,7 @@
   // src/main.js
   async function main() {
     disableAnimations();
+    panel.mount(document.body);
     const router = new Router();
     router.add("/practice/kana", new PracticeKanaPage());
     router.start();

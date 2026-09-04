@@ -19,11 +19,23 @@ export class ElementReference {
     }
 
     addClass(className) {
-        this.get().classList.add(className);
+        const element = this.get();
+
+        if (element === null) {
+            return;
+        }
+
+        element.classList.add(className);
     }
 
     removeClass(className) {
-        this.get().classList.remove(className);
+        const element = this.get();
+
+        if (element === null) {
+            return;
+        }
+
+        element.classList.remove(className);
     }
 
     click() {

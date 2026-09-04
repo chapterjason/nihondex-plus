@@ -1,6 +1,7 @@
 import {SubPage} from '../../core/sub-page.js';
 import {ButtonElementReference} from '../../dom/button-element-reference.js';
-import {Wrapper} from '../../ui/wrapper.js';
+import {panel} from '../../ui/panel.js';
+import {UiButton} from '../../ui/ui-button.js';
 import {PracticeKanaSetupForm} from './practice-kana-setup-form.js';
 import {recipe} from './recipe.js';
 
@@ -18,20 +19,22 @@ export class PracticeKanaSetupPage extends SubPage {
         this.element = this.reference.get();
         this.element.addEventListener('click', this.onStartClick);
 
-        this.startButton = Wrapper.addButton('Start', async () => {
+        this.startButton = new UiButton('Start', async () => {
             this.startButton.disable();
 
             await this.form.apply(recipe);
 
             this.startButton.enable();
         });
+
+        panel.add(this.startButton);
     }
 
     onUnload() {
         this.element.removeEventListener('click', this.onStartClick);
         this.element = null;
 
-        Wrapper.removeButton(this.startButton.get());
+        panel.remove(this.startButton);
 
         this.startButton = null;
     }
