@@ -32,8 +32,8 @@ const KANA_ROW_ORDER = [
     "da",
     "ba",
     "pa",
-    "kya",
     // Combinations
+    "kya",
     "sha",
     "cha",
     "nya",
