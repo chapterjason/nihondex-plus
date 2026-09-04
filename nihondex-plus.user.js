@@ -12,6 +12,40 @@
 // ==/UserScript==
 
 const PRACTICE_KANA_PATH = "/practice/kana";
+const KANA_DAKUTEN_OFFSET = 10;
+const KANA_COMBINATIONS_OFFSET = KANA_DAKUTEN_OFFSET + 5;
+const KANA_ROW_ORDER = [
+    // Basic
+    "a",
+    "ka",
+    "sa",
+    "ta",
+    "na",
+    "ha",
+    "ma",
+    "ya",
+    "ra",
+    "wa",
+    // Dakuten
+    "ga",
+    "za",
+    "da",
+    "ba",
+    "pa",
+    "kya",
+    // Combinations
+    "sha",
+    "cha",
+    "nya",
+    "hya",
+    "mya",
+    "rya",
+    "gya",
+    "ja",
+    "bya",
+    "pya",
+];
+const BUTTON_STORE = [];
 
 const recipe = {
     drawKana: false,
@@ -22,23 +56,74 @@ const recipe = {
     listenDraw: false,
     wordToKana: false,
 
-    order: 'focus', // or "random"
+    order: 'random', // "focus" or "random"
 
     size: 5,
-    learningCards: true,
-    randomFont: false
-}
-
-function isOnPage(path) {
-    return document.location.pathname === path;
-}
-
-function isOnPracticeKanaPage() {
-    return isOnPage(PRACTICE_KANA_PATH);
-}
-
-function elementExists(selector) {
-    return document.querySelector(selector) != null;
+    learningCards: false,
+    randomFont: true,
+    kana: {
+        hiragana: {
+            // Basic
+            a: true,
+            ka: false,
+            sa: false,
+            ta: false,
+            na: false,
+            ha: false,
+            ma: false,
+            ya: false,
+            ra: false,
+            wa: false,
+            // Dakuten
+            ga: false,
+            za: false,
+            da: false,
+            ba: false,
+            pa: false,
+            // Combinations
+            kya: false,
+            sha: false,
+            cha: false,
+            nya: false,
+            hya: false,
+            mya: false,
+            rya: false,
+            gya: false,
+            ja: false,
+            bya: false,
+            pya: false,
+        },
+        katakana: {
+            a: false,
+            ka: false,
+            sa: false,
+            ta: false,
+            na: false,
+            ha: false,
+            ma: false,
+            ya: false,
+            ra: false,
+            wa: false,
+            // Dakuten
+            ga: false,
+            za: false,
+            da: false,
+            ba: false,
+            pa: false,
+            // Combinations
+            kya: false,
+            sha: false,
+            cha: false,
+            nya: false,
+            hya: false,
+            mya: false,
+            rya: false,
+            gya: false,
+            ja: false,
+            bya: false,
+            pya: false,
+        }
+    }
 }
 
 function sleep(ms) {
@@ -94,26 +179,28 @@ class ElementReference {
 }
 
 class InputElementReference extends ElementReference {
-    setValue(value) {
+    async set(value, timeout = 1000) {
+        await this.wait(timeout);
+
         const element = this.get();
 
         if (element.value.toString() !== value.toString()) {
             element.value = '';
 
             for (const character of value.toString()) {
-                element.dispatchEvent(new KeyboardEvent('keydown', { key: character, bubbles: true }));
+                element.dispatchEvent(new KeyboardEvent('keydown', {key: character, bubbles: true}));
                 element.value += character;
-                element.dispatchEvent(new Event('input', { bubbles: true }));
-                element.dispatchEvent(new KeyboardEvent('keyup', { key: character, bubbles: true }));
+                element.dispatchEvent(new Event('input', {bubbles: true}));
+                element.dispatchEvent(new KeyboardEvent('keyup', {key: character, bubbles: true}));
             }
 
-            element.dispatchEvent(new Event('change', { bubbles: true }));
+            element.dispatchEvent(new Event('change', {bubbles: true}));
         }
     }
 }
 
 class CheckboxElementReference extends ElementReference {
-    isChecked(){
+    isChecked() {
         return this.get().checked;
     }
 
@@ -131,6 +218,16 @@ class CheckboxElementReference extends ElementReference {
             action: () => this.click(),
             message: `Checkbox ${this.selector} not unchecked`,
         });
+    }
+
+    async set(value, timeout = 1000) {
+        await this.wait(timeout);
+
+        if (value) {
+            await this.ensureChecked(timeout);
+        } else {
+            await this.ensureUnchecked();
+        }
     }
 }
 
@@ -167,12 +264,22 @@ class ButtonElementReference extends ElementReference {
         });
     }
 
-    async ensureNotActive(timeout = 1000) {
+    async ensureInactive(timeout = 1000) {
         await ensure(() => !this.isActive(), {
             timeout,
             action: () => this.click(),
             message: `Button ${this.selector} not inactive`,
         });
+    }
+
+    async set(value, timeout = 1000) {
+        await this.wait(timeout);
+
+        if (value) {
+            await this.ensureActive();
+        } else {
+            await this.ensureInactive();
+        }
     }
 }
 
@@ -189,12 +296,22 @@ class KanaRowElementReference extends ElementReference {
         });
     }
 
-    async ensureNotActive(timeout = 1000) {
+    async ensureInactive(timeout = 1000) {
         await ensure(() => !this.isActive(), {
             timeout,
             action: () => this.click(),
             message: `Button ${this.selector} not inactive`,
         });
+    }
+
+    async set(value, timeout = 1000) {
+        await this.wait(timeout);
+
+        if (value) {
+            await this.ensureActive();
+        } else {
+            await this.ensureInactive();
+        }
     }
 }
 
@@ -219,6 +336,7 @@ function createWrapper() {
 
     return wrapperBody;
 }
+
 function createButton(label, action) {
     const button = document.createElement('button');
     button.innerText = label;
@@ -227,20 +345,13 @@ function createButton(label, action) {
 
     wrapper.append(button);
 
+    BUTTON_STORE.push(button);
+
     return new ButtonElementReference(button);
 }
 
 const wrapper = createWrapper();
 
-async function applyRecipeMode(targetState, buttonReference) {
-    await buttonReference.wait();
-
-    if (targetState) {
-        await buttonReference.ensureActive();
-    } else {
-        await buttonReference.ensureNotActive();
-    }
-}
 async function applyRecipeOrder(targetOrder, orderRandomButton, orderFocusButton) {
     if (targetOrder === 'random') {
         await orderRandomButton.wait();
@@ -252,22 +363,26 @@ async function applyRecipeOrder(targetOrder, orderRandomButton, orderFocusButton
         throw new Error(`Invalid order: ${targetOrder}. Must be "random" or "focus".`);
     }
 }
-async function applyRecipeSessionSize(size, sessionSizeInput) {
-    await sessionSizeInput.wait();
 
-    await sessionSizeInput.setValue(size);
-}
-async function applyRecipeCheckbox(targetLearningCards, learningCardsCheckbox) {
-    await learningCardsCheckbox.wait();
+function* kanaRowMatrix() {
+    for (let index = 0; index < KANA_ROW_ORDER.length; index++) {
+        // css selector nth-child is 1-indexed
+        let column = 1;
+        let rowIndex = index + 1;
 
-    if (targetLearningCards) {
-        await learningCardsCheckbox.ensureChecked();
-    } else {
-        await learningCardsCheckbox.ensureUnchecked();
+        if (index >= KANA_COMBINATIONS_OFFSET) {
+            column = 3;
+            rowIndex -= KANA_COMBINATIONS_OFFSET;
+        } else if (index >= KANA_DAKUTEN_OFFSET) {
+            column = 2;
+            rowIndex -= KANA_DAKUTEN_OFFSET;
+        }
+
+        yield {column, rowIndex, index};
     }
 }
 
-function initPracticeKana() {
+function loadPracticeKana() {
     const modeDrawKanaButton = new ButtonElementReference('button[data-tip="Draw Kana"]');
     const modeSelectRomanjiButton = new ButtonElementReference('button[data-tip="Multiple Choice"]');
     const modeSelectKanaButton = new ButtonElementReference('button[data-tip="Romaji to Kana"]');
@@ -283,34 +398,103 @@ function initPracticeKana() {
     const learningCardsCheckbox = new CheckboxElementReference('div[data-walkthrough="kana-session"] + div > label > input.checkbox[type="checkbox"]');
     const randomFontCheckbox = new CheckboxElementReference('div[data-walkthrough="kana-session"] + div + div > label > input.checkbox[type="checkbox"]');
 
-    const rowA = new KanaRowElementReference('div[data-walkthrough="kana-characters"] > div.grid > div.card:nth-child(0) > div.card-body > div.grid');
+    const kanaSwitch = new CheckboxElementReference('div[data-walkthrough="kana-characters"] input.toggle[type="checkbox"]');
 
     const button = createButton('Start', async () => {
         button.disable();
 
         await Promise.all([
-            applyRecipeMode(recipe.drawKana, modeDrawKanaButton),
-            applyRecipeMode(recipe.selectRomanji, modeSelectRomanjiButton),
-            applyRecipeMode(recipe.selectKana, modeSelectKanaButton),
-            applyRecipeMode(recipe.typeRomanji, modeTypeRomanjiButton),
-            applyRecipeMode(recipe.listenType, modeListenTypeButton),
-            applyRecipeMode(recipe.listenDraw, modeListenDrawButton),
-            applyRecipeMode(recipe.wordToKana, modeWordToKanaButton),
+            modeDrawKanaButton.set(recipe.drawKana),
+            modeSelectRomanjiButton.set(recipe.selectRomanji),
+            modeSelectKanaButton.set(recipe.selectKana),
+            modeTypeRomanjiButton.set(recipe.typeRomanji),
+            modeListenTypeButton.set(recipe.listenType),
+            modeListenDrawButton.set(recipe.listenDraw),
+            modeWordToKanaButton.set(recipe.wordToKana),
             applyRecipeOrder(recipe.order, orderRandomButton, orderFocusButton),
-            applyRecipeSessionSize(recipe.size, sessionSizeInput),
-            applyRecipeCheckbox(recipe.learningCards, learningCardsCheckbox),
-            applyRecipeCheckbox(recipe.randomFont, randomFontCheckbox),
-            applyRow(recipe.row.hiragana.a, rowA),
+            sessionSizeInput.set(recipe.size),
+            learningCardsCheckbox.set(recipe.learningCards),
+            randomFontCheckbox.set(recipe.randomFont),
+            (async () => {
+                // false is hiragana
+                await kanaSwitch.set(false);
+
+                for (const {column, rowIndex, index} of kanaRowMatrix()) {
+                    const kanaRow = new KanaRowElementReference(`div[data-walkthrough="kana-characters"] > div.grid > div.card:nth-child(${column}) > div.card-body > div.grid > div.card:nth-child(${rowIndex})`);
+
+                    await kanaRow.set(recipe.kana.hiragana[KANA_ROW_ORDER[index]]);
+                }
+
+                // true is katakana
+                await kanaSwitch.set(true);
+
+                for (const {column, rowIndex, index} of kanaRowMatrix()) {
+                    const kanaRow = new KanaRowElementReference(`div[data-walkthrough="kana-characters"] > div.grid > div.card:nth-child(${column}) > div.card-body > div.grid > div.card:nth-child(${rowIndex})`);
+
+                    await kanaRow.set(recipe.kana.katakana[KANA_ROW_ORDER[index]]);
+                }
+            })(),
         ]);
 
         button.enable();
     });
 }
 
-async function main() {
-    if (isOnPracticeKanaPage()) {
-        initPracticeKana();
+/**
+ * ingame:
+ *   div.kana-practice-page
+ *   // active-system="katakana" selected-rows="あ,あ" game-count="1" current-streak="0" show-type-indicator="true" listen-mode="false"
+ *
+ *   div.card-body > div.flex > div:nth-child(1) -- div.kana-display
+ *   div.card-body > div.flex > div:nth-child(1) -- div.kana-display + div > button // i don't know button
+ *   div.card-body > div.flex > div.grid
+ *      --> button > span:first-child --> index
+ *      --> button > span:last-child --> character
+ *
+ * results:
+ *   div.kana-practice-page > div > div > div.flex > h2 -- Lesosn complete label, can we use as indicator
+ *   div.kana-practice-page > div > div > div.flex > div.grid -- stats overview
+ *   div.kana-practice-page > div > div > div.flex > div > button -- show details button
+ *   div.kana-practice-page > div > div > div.flex > div > button -- show details button
+ *   div.kana-practice-page > div > div > div.flex > div > button + div > div -- details container
+ *   div.kana-practice-page > div > div > div.flex > div > button + div > div > div > div:nth-child(2) -- chars + timings
+ */
+
+function unloadPracticeKana() {
+    for (const buttonReference of BUTTON_STORE) {
+        const button = buttonReference.get();
+
+        button.remove()
     }
+}
+
+async function main() {
+
+    /**
+     * @param {URL} url
+     */
+    function onNavigation(url) {
+        if (url.pathname === PRACTICE_KANA_PATH) {
+            loadPracticeKana();
+        } else {
+            unloadPracticeKana();
+        }
+    }
+
+    // how to detect navigation?
+    window.history.pushState = new Proxy(window.history.pushState, {
+        apply: (target, thisArg, argArray) => {
+            const [,, urlArg] = argArray;
+
+            if (typeof urlArg === 'string') {
+                onNavigation(new URL(urlArg, window.location.origin));
+            }
+
+            return target.apply(thisArg, argArray);
+        },
+    });
+
+    onNavigation(window.location);
 }
 
 (() => {
