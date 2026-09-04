@@ -48,6 +48,14 @@ export class TrackingProcessor {
         'keydown',
     ];
 
+    static TYPING = [
+        'keydown',
+        'keyup',
+        'compositionstart',
+        'compositionupdate',
+        'compositionend',
+    ];
+
     static BOUNDARIES = [
         'pointerdown',
         'pointerup',
@@ -169,40 +177,41 @@ export class TrackingProcessor {
     }
 
     typing() {
-        const events = this.select(
-            'keydown',
-            'keyup',
-            'compositionstart',
-            'compositionupdate',
-            'compositionend',
-            'focusin',
-            'focusout',
-        );
-
+        const events = this.select(...TrackingProcessor.TYPING, 'answer');
+        const owner = new Map();
         const groups = [];
 
         let current = null;
+        let closed = false;
 
         for (const event of events) {
-            if (event.type === 'focusout') {
-                current = null;
+            if (event.type === 'answer') {
+                closed = true;
 
                 continue;
             }
 
-            if (event.type === 'focusin') {
-                current = [];
-                groups.push(current);
+            if (event.type === 'keyup') {
+                const group = owner.get(event.code) ?? current;
+
+                owner.delete(event.code);
+                group?.push(event);
 
                 continue;
             }
 
-            if (current === null) {
+            if (current === null || closed) {
                 current = [];
+                closed = false;
+
                 groups.push(current);
             }
 
             current.push(event);
+
+            if (event.type === 'keydown') {
+                owner.set(event.code, current);
+            }
         }
 
         return groups
@@ -212,6 +221,7 @@ export class TrackingProcessor {
 
     describeTyping(events) {
         const characters = [];
+        const typed = [];
         const intervals = [];
         const dwells = [];
         const compositions = [];
@@ -226,6 +236,7 @@ export class TrackingProcessor {
             switch (event.type) {
                 case 'keydown':
                     keys += 1;
+                    typed.push(event.key);
                     pressed.set(event.code, event.time);
 
                     if (previousKeydown !== null) {
@@ -295,6 +306,7 @@ export class TrackingProcessor {
             end: last.time,
             duration: last.time - first.time,
             text: characters.join(''),
+            typed,
             keys,
             backspaces,
             intervals,

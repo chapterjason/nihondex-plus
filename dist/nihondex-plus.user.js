@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.15
+// @version      1.0.16
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -126,7 +126,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.15"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.16"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -899,6 +899,13 @@
       "click",
       "keydown"
     ];
+    static TYPING = [
+      "keydown",
+      "keyup",
+      "compositionstart",
+      "compositionupdate",
+      "compositionend"
+    ];
     static BOUNDARIES = [
       "pointerdown",
       "pointerup",
@@ -989,37 +996,37 @@
       return _TrackingProcessor.withCustom(movement, points);
     }
     typing() {
-      const events = this.select(
-        "keydown",
-        "keyup",
-        "compositionstart",
-        "compositionupdate",
-        "compositionend",
-        "focusin",
-        "focusout"
-      );
+      const events = this.select(..._TrackingProcessor.TYPING, "answer");
+      const owner = /* @__PURE__ */ new Map();
       const groups = [];
       let current = null;
+      let closed = false;
       for (const event of events) {
-        if (event.type === "focusout") {
-          current = null;
+        if (event.type === "answer") {
+          closed = true;
           continue;
         }
-        if (event.type === "focusin") {
-          current = [];
-          groups.push(current);
+        if (event.type === "keyup") {
+          const group = owner.get(event.code) ?? current;
+          owner.delete(event.code);
+          group?.push(event);
           continue;
         }
-        if (current === null) {
+        if (current === null || closed) {
           current = [];
+          closed = false;
           groups.push(current);
         }
         current.push(event);
+        if (event.type === "keydown") {
+          owner.set(event.code, current);
+        }
       }
       return groups.filter((group) => group.length > 0).map((group) => this.describeTyping(group));
     }
     describeTyping(events) {
       const characters = [];
+      const typed = [];
       const intervals = [];
       const dwells = [];
       const compositions = [];
@@ -1032,6 +1039,7 @@
         switch (event.type) {
           case "keydown":
             keys += 1;
+            typed.push(event.key);
             pressed.set(event.code, event.time);
             if (previousKeydown !== null) {
               intervals.push(event.time - previousKeydown);
@@ -1084,6 +1092,7 @@
         end: last.time,
         duration: last.time - first.time,
         text: characters.join(""),
+        typed,
         keys,
         backspaces,
         intervals,
