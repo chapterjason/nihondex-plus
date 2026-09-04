@@ -8,8 +8,6 @@ export class TrackingProcessor {
         'y',
         'button',
         'pointerType',
-        'target',
-        'related',
         'code',
         'key',
         'modifiers',
@@ -62,7 +60,6 @@ export class TrackingProcessor {
     process() {
         return [
             ...this.movements(),
-            ...this.hovers(),
             ...this.typing(),
             ...this.visibility(),
             ...this.select('start', 'end', 'click', ...TrackingProcessor.BOUNDARIES, 'focusin', 'focusout'),
@@ -146,39 +143,9 @@ export class TrackingProcessor {
             efficiency: distance === 0 ? 1 : displacement / distance,
             peakSpeed,
             directionChanges,
-            targets: [...new Set(points.map((point) => point.target))],
         };
 
         return TrackingProcessor.withCustom(movement, points);
-    }
-
-    hovers() {
-        const groups = [];
-
-        for (const move of this.select('pointermove')) {
-            const current = groups[groups.length - 1];
-
-            if (current !== undefined && current[0].target === move.target) {
-                current.push(move);
-
-                continue;
-            }
-
-            groups.push([move]);
-        }
-
-        return groups.map((points) => {
-            const first = points[0];
-            const last = points[points.length - 1];
-
-            return TrackingProcessor.withCustom({
-                time: first.time,
-                type: 'hover',
-                end: last.time,
-                duration: last.time - first.time,
-                target: first.target,
-            }, points);
-        });
     }
 
     typing() {
@@ -307,7 +274,6 @@ export class TrackingProcessor {
             type: 'typing',
             end: last.time,
             duration: last.time - first.time,
-            target: first.target,
             text: characters.join(''),
             keys,
             backspaces,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.4
+// @version      1.0.5
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -122,7 +122,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.4"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.5"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -856,8 +856,6 @@
       "y",
       "button",
       "pointerType",
-      "target",
-      "related",
       "code",
       "key",
       "modifiers",
@@ -894,7 +892,6 @@
     process() {
       return [
         ...this.movements(),
-        ...this.hovers(),
         ...this.typing(),
         ...this.visibility(),
         ...this.select("start", "end", "click", ..._TrackingProcessor.BOUNDARIES, "focusin", "focusout")
@@ -955,32 +952,9 @@
         displacement: Math.round(displacement),
         efficiency: distance === 0 ? 1 : displacement / distance,
         peakSpeed,
-        directionChanges,
-        targets: [...new Set(points.map((point) => point.target))]
+        directionChanges
       };
       return _TrackingProcessor.withCustom(movement, points);
-    }
-    hovers() {
-      const groups = [];
-      for (const move of this.select("pointermove")) {
-        const current = groups[groups.length - 1];
-        if (current !== void 0 && current[0].target === move.target) {
-          current.push(move);
-          continue;
-        }
-        groups.push([move]);
-      }
-      return groups.map((points) => {
-        const first = points[0];
-        const last = points[points.length - 1];
-        return _TrackingProcessor.withCustom({
-          time: first.time,
-          type: "hover",
-          end: last.time,
-          duration: last.time - first.time,
-          target: first.target
-        }, points);
-      });
     }
     typing() {
       const events = this.select(
@@ -1077,7 +1051,6 @@
         type: "typing",
         end: last.time,
         duration: last.time - first.time,
-        target: first.target,
         text: characters.join(""),
         keys,
         backspaces,
