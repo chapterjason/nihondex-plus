@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <title>change-tracking testbed</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+        }
+
+        body {
+            margin: 0;
+            padding: 1.5rem;
+            font: 15px/1.5 system-ui, sans-serif;
+            display: grid;
+            grid-template-columns: 1fr 34rem;
+            gap: 1.5rem;
+            align-items: start;
+        }
+
+        h2 {
+            margin: 0 0 .75rem;
+            font-size: .8rem;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            opacity: .6;
+        }
+
+        section {
+            margin-bottom: 1.75rem;
+        }
+
+        .prompt {
+            font-size: 5rem;
+            line-height: 1.1;
+            text-align: center;
+            padding: 1rem 0 1.5rem;
+            user-select: none;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: .75rem;
+            max-width: 28rem;
+            margin: 0 auto;
+        }
+
+        .card {
+            border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+            border-radius: .5rem;
+            padding: 1.5rem 0;
+            text-align: center;
+            font-size: 2rem;
+            cursor: pointer;
+            user-select: none;
+            background: color-mix(in srgb, currentColor 4%, transparent);
+        }
+
+        .card:hover {
+            background: color-mix(in srgb, currentColor 10%, transparent);
+        }
+
+        .card[data-state=correct] {
+            border-color: #3a8;
+            background: color-mix(in srgb, #3a8 20%, transparent);
+        }
+
+        .card[data-state=wrong] {
+            border-color: #c55;
+            background: color-mix(in srgb, #c55 20%, transparent);
+        }
+
+        input[type=text] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: .6rem .75rem;
+            font: inherit;
+            border-radius: .4rem;
+            border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+            background: transparent;
+            color: inherit;
+        }
+
+        .echo {
+            margin-top: .5rem;
+            min-height: 1.5rem;
+            font-family: ui-monospace, monospace;
+            opacity: .7;
+        }
+
+        .controls {
+            display: flex;
+            gap: .5rem;
+            margin-bottom: .75rem;
+        }
+
+        button {
+            font: inherit;
+            padding: .4rem .9rem;
+            border-radius: .4rem;
+            border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: .4;
+            cursor: default;
+        }
+
+        .stats {
+            font-variant-numeric: tabular-nums;
+            font-size: .85rem;
+            opacity: .7;
+            margin-bottom: .5rem;
+        }
+
+        pre {
+            margin: 0;
+            height: 72vh;
+            overflow: auto;
+            padding: .75rem;
+            border-radius: .4rem;
+            background: color-mix(in srgb, currentColor 6%, transparent);
+            font: 12px/1.45 ui-monospace, monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <section>
+        <h2>Spiel</h2>
+        <div class="prompt" id="prompt">&mdash;</div>
+        <div class="cards" id="options"></div>
+        <div class="progress">Runde <span id="round">0</span></div>
+    </section>
+
+    <section>
+        <h2>Texteingabe</h2>
+        <input type="text" id="note" placeholder="tippen &mdash; wird unten gespiegelt&hellip;">
+        <div class="echo" id="echo"></div>
+    </section>
+</div>
+
+<div>
+    <h2>Aufzeichnung</h2>
+
+    <div class="controls">
+        <button id="start">Start</button>
+        <button id="stop" disabled>Stop</button>
+        <button id="copy" disabled>Kopieren</button>
+    </div>
+
+    <div class="stats" id="stats">0 Zeilen</div>
+
+    <pre id="output"></pre>
+</div>
+
+<script src="change-tracking.user.js"></script>
+<script>
+    const KANA = [
+        ['あ', 'a'], ['い', 'i'], ['う', 'u'], ['え', 'e'], ['お', 'o'],
+        ['か', 'ka'], ['き', 'ki'], ['く', 'ku'], ['け', 'ke'], ['こ', 'ko'],
+        ['さ', 'sa'], ['し', 'shi'], ['す', 'su'], ['せ', 'se'], ['そ', 'so'],
+        ['た', 'ta'], ['ち', 'chi'], ['つ', 'tsu'], ['て', 'te'], ['と', 'to'],
+    ];
+
+    const OPTIONS = 4;
+    const HTML_PREVIEW = 160;
+
+    const tracker = new ChangeTracker(document.getElementById('app'));
+    const collector = new ChangeCollector(tracker);
+
+    const prompt = document.getElementById('prompt');
+    const options = document.getElementById('options');
+    const roundLabel = document.getElementById('round');
+    const note = document.getElementById('note');
+    const echo = document.getElementById('echo');
+    const startButton = document.getElementById('start');
+    const stopButton = document.getElementById('stop');
+    const copyButton = document.getElementById('copy');
+    const output = document.getElementById('output');
+    const stats = document.getElementById('stats');
+
+    let round = 0;
+    let answer = null;
+    let locked = false;
+    let timer = null;
+
+    function shuffle(values) {
+        const shuffled = [...values];
+
+        for (let index = shuffled.length - 1; index > 0; index -= 1) {
+            const other = Math.floor(Math.random() * (index + 1));
+
+            [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
+        }
+
+        return shuffled;
+    }
+
+    function nextRound() {
+        round += 1;
+        roundLabel.textContent = round;
+
+        const [kana, romaji] = KANA[Math.floor(Math.random() * KANA.length)];
+        const distractors = shuffle(KANA.filter(([, other]) => other !== romaji))
+            .slice(0, OPTIONS - 1)
+            .map(([, other]) => other);
+
+        answer = romaji;
+        locked = false;
+
+        prompt.textContent = kana;
+        options.replaceChildren(...shuffle([romaji, ...distractors]).map((value) => {
+            const card = document.createElement('div');
+
+            card.className = 'card';
+            card.textContent = value;
+
+            return card;
+        }));
+
+        history.pushState({ round }, '', `#runde-${round}`);
+    }
+
+    function preview(line) {
+        const record = JSON.parse(line);
+
+        if (typeof record.html === 'string') {
+            record.html = `${record.html.slice(0, HTML_PREVIEW)}… (${record.html.length} Zeichen)`;
+        }
+
+        return JSON.stringify(record);
+    }
+
+    function render() {
+        const log = collector.log;
+        const counts = {};
+        let bytes = 0;
+
+        for (const line of log) {
+            const { type } = JSON.parse(line);
+
+            counts[type] = (counts[type] ?? 0) + 1;
+            bytes += line.length;
+        }
+
+        stats.textContent = [
+            `${log.length} Zeilen`,
+            `${(bytes / 1024).toFixed(1)} kB`,
+            ...Object.entries(counts).map(([type, count]) => `${count} ${type}`),
+        ].join(' · ');
+
+        const atBottom = output.scrollTop + output.clientHeight >= output.scrollHeight - 20;
+
+        output.textContent = log.map(preview).join('\n');
+
+        if (atBottom) {
+            output.scrollTop = output.scrollHeight;
+        }
+    }
+
+    options.addEventListener('click', (event) => {
+        const card = event.target.closest('.card');
+
+        if (card === null || locked) {
+            return;
+        }
+
+        locked = true;
+        card.dataset.state = card.textContent === answer ? 'correct' : 'wrong';
+
+        setTimeout(nextRound, 700);
+    });
+
+    note.addEventListener('input', () => {
+        echo.textContent = note.value;
+    });
+
+    startButton.addEventListener('click', () => {
+        collector.start();
+
+        startButton.disabled = true;
+        stopButton.disabled = false;
+        copyButton.disabled = true;
+
+        round = 0;
+        nextRound();
+
+        timer = setInterval(render, 200);
+    });
+
+    stopButton.addEventListener('click', () => {
+        collector.stop();
+
+        clearInterval(timer);
+        timer = null;
+
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        copyButton.disabled = false;
+
+        render();
+    });
+
+    copyButton.addEventListener('click', async () => {
+        const label = copyButton.textContent;
+
+        try {
+            await navigator.clipboard.writeText(collector.log.join('\n'));
+
+            copyButton.textContent = 'Kopiert';
+        } catch (error) {
+            console.error(error);
+
+            copyButton.textContent = 'Fehlgeschlagen';
+        }
+
+        setTimeout(() => {
+            copyButton.textContent = label;
+        }, 1500);
+    });
+</script>
+
+</body>
+</html>
