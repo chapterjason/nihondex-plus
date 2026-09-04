@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.9
+// @version      1.0.10
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -126,7 +126,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.9"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.10"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -907,10 +907,6 @@
     static distance(from, to) {
       return Math.hypot(to.x - from.x, to.y - from.y);
     }
-    static angleBetween(previous, current) {
-      const delta = current - previous;
-      return Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta)));
-    }
     constructor(log) {
       this.records = log.map((line) => JSON.parse(line)).sort((a, b) => a.time - b.time);
     }
@@ -964,8 +960,6 @@
       const last = points[points.length - 1];
       let distance = 0;
       let peakSpeed = 0;
-      let directionChanges = 0;
-      let previousAngle = null;
       for (let index = 1; index < points.length; index += 1) {
         const from = points[index - 1];
         const to = points[index];
@@ -975,14 +969,6 @@
         if (elapsed > 0) {
           peakSpeed = Math.max(peakSpeed, step / elapsed);
         }
-        if (step === 0) {
-          continue;
-        }
-        const angle = Math.atan2(to.y - from.y, to.x - from.x);
-        if (previousAngle !== null && _TrackingProcessor.angleBetween(previousAngle, angle) > Math.PI / 2) {
-          directionChanges += 1;
-        }
-        previousAngle = angle;
       }
       const displacement = _TrackingProcessor.distance(first, last);
       const movement = {
@@ -996,8 +982,7 @@
         distance: Math.round(distance),
         displacement: Math.round(displacement),
         efficiency: distance === 0 ? 1 : displacement / distance,
-        peakSpeed,
-        directionChanges
+        peakSpeed
       };
       return _TrackingProcessor.withCustom(movement, points);
     }

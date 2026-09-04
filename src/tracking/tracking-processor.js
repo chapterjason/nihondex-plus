@@ -60,12 +60,6 @@ export class TrackingProcessor {
         return Math.hypot(to.x - from.x, to.y - from.y);
     }
 
-    static angleBetween(previous, current) {
-        const delta = current - previous;
-
-        return Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta)));
-    }
-
     constructor(log) {
         this.records = log
             .map((line) => JSON.parse(line))
@@ -141,8 +135,6 @@ export class TrackingProcessor {
 
         let distance = 0;
         let peakSpeed = 0;
-        let directionChanges = 0;
-        let previousAngle = null;
 
         for (let index = 1; index < points.length; index += 1) {
             const from = points[index - 1];
@@ -155,18 +147,6 @@ export class TrackingProcessor {
             if (elapsed > 0) {
                 peakSpeed = Math.max(peakSpeed, step / elapsed);
             }
-
-            if (step === 0) {
-                continue;
-            }
-
-            const angle = Math.atan2(to.y - from.y, to.x - from.x);
-
-            if (previousAngle !== null && TrackingProcessor.angleBetween(previousAngle, angle) > Math.PI / 2) {
-                directionChanges += 1;
-            }
-
-            previousAngle = angle;
         }
 
         const displacement = TrackingProcessor.distance(first, last);
@@ -183,7 +163,6 @@ export class TrackingProcessor {
             displacement: Math.round(displacement),
             efficiency: distance === 0 ? 1 : displacement / distance,
             peakSpeed,
-            directionChanges,
         };
 
         return TrackingProcessor.withCustom(movement, points);
