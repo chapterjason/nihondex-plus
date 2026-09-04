@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.11
+// @version      1.0.14
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -126,7 +126,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.11"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.14"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -630,8 +630,10 @@
             animation: none !important;
         }
 
-        .animate-fade-in {
+        .animate-fade-in,
+        .pill-animate {
             opacity: 1 !important;
+            transform: none !important;
         }
     `;
     document.head.append(style);
@@ -1145,10 +1147,7 @@
   var FEEDBACK_SUCCESS = "✓";
   var FEEDBACK_ERROR = "✗";
   var EMPTY_ANSWER = {
-    success: false,
-    prompt: null,
-    options: [],
-    chosen: null
+    prompt: null
   };
   var PracticeKanaGamePage = class extends SubPage {
     constructor() {
@@ -1161,8 +1160,9 @@
       this.tracked = null;
       this.answered = false;
       this.answer = null;
+      this.choices = [];
       this.feedback = null;
-      this.retries = 0;
+      this.mark = null;
     }
     getGameMode() {
       const card = this.reference.get();
@@ -1186,23 +1186,22 @@
       if (card === null) {
         return;
       }
+      this.choose(card, OPTION_ERROR_CLASS);
       const feedback = card.querySelector(FEEDBACK_SELECTOR);
-      if (feedback === this.feedback) {
+      const mark = feedback === null ? null : feedback.textContent.trim();
+      if (feedback === this.feedback && mark === this.mark) {
         return;
       }
       this.feedback = feedback;
-      if (feedback === null) {
-        return;
-      }
-      const mark = feedback.textContent.trim();
+      this.mark = mark;
       if (mark === FEEDBACK_SUCCESS) {
         this.answered = true;
+        this.choose(card, OPTION_SUCCESS_CLASS);
         this.answer = this.snapshot(card);
         this.collector.mark("answer", { correct: true });
         return;
       }
       if (mark === FEEDBACK_ERROR) {
-        this.retries += 1;
         this.collector.mark("answer", { correct: false });
       }
     }
@@ -1229,24 +1228,25 @@
     getOptions(card) {
       return [...card.querySelectorAll(".kana-option-btn")].map((option) => this.getLabel(option));
     }
-    getSuccess(card) {
-      const feedback = card.querySelector(FEEDBACK_SELECTOR);
-      if (feedback === null) {
-        return false;
-      }
-      return feedback.textContent.trim() === FEEDBACK_SUCCESS && this.retries === 0;
+    getMarked(card, className) {
+      return [...card.querySelectorAll(".kana-option-btn")].filter((option) => option.classList.contains(className)).map((option) => this.getLabel(option));
     }
-    getChosen(card) {
-      const options = [...card.querySelectorAll(".kana-option-btn")];
-      const chosen = options.find((option) => option.classList.contains(OPTION_ERROR_CLASS)) ?? options.find((option) => option.classList.contains(OPTION_SUCCESS_CLASS));
-      return chosen === void 0 ? null : this.getLabel(chosen);
+    choose(card, className) {
+      const marked = this.getMarked(card, className).filter((label) => !this.choices.includes(label));
+      this.choices.push(...marked);
     }
     snapshot(card) {
+      const answer = {
+        prompt: this.getPrompt(card)
+      };
+      const options = this.getOptions(card);
+      if (options.length === 0) {
+        return answer;
+      }
       return {
-        success: this.getSuccess(card),
-        prompt: this.getPrompt(card),
-        options: this.getOptions(card),
-        chosen: this.getChosen(card)
+        ...answer,
+        options,
+        choices: [...this.choices]
       };
     }
     finish() {
@@ -1263,7 +1263,6 @@
         started,
         finished,
         gameMode: this.gameMode,
-        retries: this.retries,
         ...answer,
         log,
         processed
@@ -1274,8 +1273,9 @@
       this.finish();
       this.answered = false;
       this.answer = null;
+      this.choices = [];
       this.feedback = null;
-      this.retries = 0;
+      this.mark = null;
       this.tracked = card;
       this.gameMode = this.getGameMode();
       this.collector.start();
@@ -1287,10 +1287,49 @@
     }
   };
 
+  // src/dom/stat-pill-element-reference.js
+  var NUMBER = /(\d+)/;
+  var DIGITS = /^\d+$/;
+  var StatPillElementReference = class extends ElementReference {
+    getLabel() {
+      return this.get().lastElementChild.textContent.trim();
+    }
+    getValue() {
+      return this.get().querySelector("span").textContent.trim();
+    }
+    getNumber() {
+      const match = this.getValue().match(NUMBER);
+      return match === null ? null : Number(match[1]);
+    }
+    getSeconds() {
+      const parts = this.getValue().split(":");
+      return parts.every((part) => DIGITS.test(part)) ? parts.reduce((total, part) => total * 60 + Number(part), 0) : null;
+    }
+  };
+
   // src/page/practice-kana/practice-kana-result-page.js
   var SECONDS = /([\d.]+)\s*s/;
   var COUNT = /×\s*(\d+)/;
-  var PracticeKanaResultPage = class extends SubPage {
+  var EMPTY_STATS = {
+    score: null,
+    duration: null,
+    streak: null
+  };
+  var PracticeKanaResultPage = class _PracticeKanaResultPage extends SubPage {
+    static SETTLE = 3;
+    static equal(stats, other) {
+      return other !== null && Object.keys(stats).every((key) => stats[key] === other[key]);
+    }
+    static STATS = {
+      "Score": "score",
+      "Duration": "duration",
+      "Best Streak": "streak"
+    };
+    static VALUES = {
+      score: (pill) => pill.getNumber(),
+      duration: (pill) => pill.getSeconds(),
+      streak: (pill) => pill.getNumber()
+    };
     constructor() {
       super(".stat-pill");
       this.details = new ButtonElementReference(".kana-practice-page button:has(.fa-chevron-down)");
@@ -1303,6 +1342,10 @@
         return null;
       }
       return button.parentElement.children[1];
+    }
+    getStats() {
+      const entries = [...document.querySelectorAll(".stat-pill")].map((element) => new StatPillElementReference(element)).map((pill) => [_PracticeKanaResultPage.STATS[pill.getLabel()], pill]).filter(([key]) => key !== void 0).map(([key, pill]) => [key, _PracticeKanaResultPage.VALUES[key](pill)]);
+      return { ...EMPTY_STATS, ...Object.fromEntries(entries) };
     }
     getIncorrect(details) {
       return [...details.querySelectorAll(".rounded-xl.p-3.text-center")].filter((entry) => entry.querySelector("span") !== null).map((entry) => ({
@@ -1320,6 +1363,34 @@
         seconds: Number(seconds[1])
       }));
     }
+    async settle(timeout = 3e3) {
+      let previous = null;
+      let changed = false;
+      let stable = 0;
+      await ensure(() => {
+        const stats = this.getStats();
+        const same = _PracticeKanaResultPage.equal(stats, previous);
+        changed = changed || previous !== null && !same;
+        stable = same ? stable + 1 : 0;
+        previous = stats;
+        return changed && stable >= _PracticeKanaResultPage.SETTLE;
+      }, { timeout, interval: 100, message: "Stats not settled" });
+    }
+    async report() {
+      await this.settle().catch(() => void 0);
+      const details = this.getDetails();
+      if (details === null) {
+        return;
+      }
+      this.dispatchEvent(new CustomEvent("result", {
+        detail: {
+          ...this.getStats(),
+          incorrect: this.getIncorrect(details),
+          results: this.getResults(details)
+        }
+      }));
+      this.continueButton.click();
+    }
     check() {
       super.check();
       if (!this.loaded || this.reported) {
@@ -1331,13 +1402,7 @@
         return;
       }
       this.reported = true;
-      this.dispatchEvent(new CustomEvent("result", {
-        detail: {
-          incorrect: this.getIncorrect(details),
-          results: this.getResults(details)
-        }
-      }));
-      this.continueButton.click();
+      this.report();
     }
     onLoad() {
       this.reported = false;
@@ -1386,6 +1451,10 @@
         session,
         started: stamp(startedAt),
         finished: stamp(finishedAt),
+        score: result.score,
+        duration: result.duration,
+        streak: result.streak,
+        incorrect: result.incorrect,
         results
       });
     }

@@ -12,8 +12,10 @@ export function disableAnimations() {
             animation: none !important;
         }
 
-        .animate-fade-in {
+        .animate-fade-in,
+        .pill-animate {
             opacity: 1 !important;
+            transform: none !important;
         }
     `;
 

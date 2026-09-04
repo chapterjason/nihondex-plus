@@ -1,11 +1,37 @@
 import {SubPage} from '../../core/sub-page.js';
 import {ButtonElementReference} from '../../dom/button-element-reference.js';
+import {StatPillElementReference} from '../../dom/stat-pill-element-reference.js';
+import {ensure} from '../../core/ensure.js';
 
 const SECONDS = /([\d.]+)\s*s/;
 
 const COUNT = /×\s*(\d+)/;
 
+const EMPTY_STATS = {
+    score: null,
+    duration: null,
+    streak: null,
+};
+
 export class PracticeKanaResultPage extends SubPage {
+    static SETTLE = 3;
+
+    static equal(stats, other) {
+        return other !== null && Object.keys(stats).every((key) => stats[key] === other[key]);
+    }
+
+    static STATS = {
+        'Score': 'score',
+        'Duration': 'duration',
+        'Best Streak': 'streak',
+    };
+
+    static VALUES = {
+        score: (pill) => pill.getNumber(),
+        duration: (pill) => pill.getSeconds(),
+        streak: (pill) => pill.getNumber(),
+    };
+
     constructor() {
         super('.stat-pill');
 
@@ -22,6 +48,16 @@ export class PracticeKanaResultPage extends SubPage {
         }
 
         return button.parentElement.children[1];
+    }
+
+    getStats() {
+        const entries = [...document.querySelectorAll('.stat-pill')]
+            .map((element) => new StatPillElementReference(element))
+            .map((pill) => [PracticeKanaResultPage.STATS[pill.getLabel()], pill])
+            .filter(([key]) => key !== undefined)
+            .map(([key, pill]) => [key, PracticeKanaResultPage.VALUES[key](pill)]);
+
+        return {...EMPTY_STATS, ...Object.fromEntries(entries)};
     }
 
     getIncorrect(details) {
@@ -47,6 +83,43 @@ export class PracticeKanaResultPage extends SubPage {
             }));
     }
 
+    async settle(timeout = 3000) {
+        let previous = null;
+        let changed = false;
+        let stable = 0;
+
+        await ensure(() => {
+            const stats = this.getStats();
+            const same = PracticeKanaResultPage.equal(stats, previous);
+
+            changed = changed || previous !== null && !same;
+            stable = same ? stable + 1 : 0;
+            previous = stats;
+
+            return changed && stable >= PracticeKanaResultPage.SETTLE;
+        }, {timeout, interval: 100, message: 'Stats not settled'});
+    }
+
+    async report() {
+        await this.settle().catch(() => undefined);
+
+        const details = this.getDetails();
+
+        if (details === null) {
+            return;
+        }
+
+        this.dispatchEvent(new CustomEvent('result', {
+            detail: {
+                ...this.getStats(),
+                incorrect: this.getIncorrect(details),
+                results: this.getResults(details),
+            },
+        }));
+
+        this.continueButton.click();
+    }
+
     check() {
         super.check();
 
@@ -64,14 +137,7 @@ export class PracticeKanaResultPage extends SubPage {
 
         this.reported = true;
 
-        this.dispatchEvent(new CustomEvent('result', {
-            detail: {
-                incorrect: this.getIncorrect(details),
-                results: this.getResults(details),
-            },
-        }));
-
-        this.continueButton.click();
+        this.report();
     }
 
     onLoad() {

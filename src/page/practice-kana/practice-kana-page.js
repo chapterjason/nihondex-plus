@@ -52,6 +52,10 @@ export class PracticeKanaPage extends Page {
             session,
             started: stamp(startedAt),
             finished: stamp(finishedAt),
+            score: result.score,
+            duration: result.duration,
+            streak: result.streak,
+            incorrect: result.incorrect,
             results,
         });
     }

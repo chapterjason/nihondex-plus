@@ -25,10 +25,7 @@ const FEEDBACK_SUCCESS = '\u2713';
 const FEEDBACK_ERROR = '\u2717';
 
 const EMPTY_ANSWER = {
-    success: false,
     prompt: null,
-    options: [],
-    chosen: null,
 };
 
 export class PracticeKanaGamePage extends SubPage {
@@ -43,8 +40,9 @@ export class PracticeKanaGamePage extends SubPage {
         this.tracked = null;
         this.answered = false;
         this.answer = null;
+        this.choices = [];
         this.feedback = null;
-        this.retries = 0;
+        this.mark = null;
     }
 
     getGameMode() {
@@ -80,22 +78,23 @@ export class PracticeKanaGamePage extends SubPage {
             return;
         }
 
-        const feedback = card.querySelector(FEEDBACK_SELECTOR);
+        this.choose(card, OPTION_ERROR_CLASS);
 
-        if (feedback === this.feedback) {
+        const feedback = card.querySelector(FEEDBACK_SELECTOR);
+        const mark = feedback === null ? null : feedback.textContent.trim();
+
+        if (feedback === this.feedback && mark === this.mark) {
             return;
         }
 
         this.feedback = feedback;
-
-        if (feedback === null) {
-            return;
-        }
-
-        const mark = feedback.textContent.trim();
+        this.mark = mark;
 
         if (mark === FEEDBACK_SUCCESS) {
             this.answered = true;
+
+            this.choose(card, OPTION_SUCCESS_CLASS);
+
             this.answer = this.snapshot(card);
 
             this.collector.mark('answer', {correct: true});
@@ -104,8 +103,6 @@ export class PracticeKanaGamePage extends SubPage {
         }
 
         if (mark === FEEDBACK_ERROR) {
-            this.retries += 1;
-
             this.collector.mark('answer', {correct: false});
         }
     }
@@ -145,30 +142,34 @@ export class PracticeKanaGamePage extends SubPage {
         return [...card.querySelectorAll('.kana-option-btn')].map((option) => this.getLabel(option));
     }
 
-    getSuccess(card) {
-        const feedback = card.querySelector(FEEDBACK_SELECTOR);
-
-        if (feedback === null) {
-            return false;
-        }
-
-        return feedback.textContent.trim() === FEEDBACK_SUCCESS && this.retries === 0;
+    getMarked(card, className) {
+        return [...card.querySelectorAll('.kana-option-btn')]
+            .filter((option) => option.classList.contains(className))
+            .map((option) => this.getLabel(option));
     }
 
-    getChosen(card) {
-        const options = [...card.querySelectorAll('.kana-option-btn')];
-        const chosen = options.find((option) => option.classList.contains(OPTION_ERROR_CLASS))
-            ?? options.find((option) => option.classList.contains(OPTION_SUCCESS_CLASS));
+    choose(card, className) {
+        const marked = this.getMarked(card, className)
+            .filter((label) => !this.choices.includes(label));
 
-        return chosen === undefined ? null : this.getLabel(chosen);
+        this.choices.push(...marked);
     }
 
     snapshot(card) {
-        return {
-            success: this.getSuccess(card),
+        const answer = {
             prompt: this.getPrompt(card),
-            options: this.getOptions(card),
-            chosen: this.getChosen(card),
+        };
+
+        const options = this.getOptions(card);
+
+        if (options.length === 0) {
+            return answer;
+        }
+
+        return {
+            ...answer,
+            options,
+            choices: [...this.choices],
         };
     }
 
@@ -188,7 +189,6 @@ export class PracticeKanaGamePage extends SubPage {
             started,
             finished,
             gameMode: this.gameMode,
-            retries: this.retries,
             ...answer,
             log,
             processed,
@@ -202,8 +202,9 @@ export class PracticeKanaGamePage extends SubPage {
 
         this.answered = false;
         this.answer = null;
+        this.choices = [];
         this.feedback = null;
-        this.retries = 0;
+        this.mark = null;
         this.tracked = card;
         this.gameMode = this.getGameMode();
 
