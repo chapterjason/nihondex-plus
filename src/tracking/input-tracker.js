@@ -28,7 +28,7 @@ const DOCUMENT_ONLY = [
     'pointerleave',
 ];
 
-class InputTracker extends EventTarget {
+export class InputTracker extends EventTarget {
 
     constructor() {
         super();

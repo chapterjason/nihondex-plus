@@ -1,4 +1,4 @@
-class TrackingProcessor {
+export class TrackingProcessor {
     static MOVEMENT_GAP = 100;
 
     static FIELDS = [

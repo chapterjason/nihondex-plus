@@ -1,6 +1,4 @@
-import {getUniqueSelector} from '../dom/unique-selector.js';
-
-class TrackingCollector extends EventTarget {
+export class TrackingCollector extends EventTarget {
     static BUTTONS = ['left', 'middle', 'right'];
 
     static MODIFIERS = [
@@ -82,7 +80,6 @@ class TrackingCollector extends EventTarget {
                     x: Math.round(source.clientX),
                     y: Math.round(source.clientY),
                     button: TrackingCollector.button(source),
-                    target: getUniqueSelector(source.target),
                 });
                 break;
 
@@ -94,7 +91,6 @@ class TrackingCollector extends EventTarget {
                     x: Math.round(source.clientX),
                     y: Math.round(source.clientY),
                     pointerType: source.pointerType,
-                    target: getUniqueSelector(source.target),
                 });
                 break;
 
@@ -105,7 +101,6 @@ class TrackingCollector extends EventTarget {
                     y: Math.round(source.clientY),
                     button: TrackingCollector.button(source),
                     pointerType: source.pointerType,
-                    target: getUniqueSelector(source.target),
                 });
                 break;
 
@@ -114,15 +109,12 @@ class TrackingCollector extends EventTarget {
             case 'compositionend':
                 Object.assign(record, {
                     data: source.data,
-                    target: getUniqueSelector(source.target),
                 });
                 break;
 
             case 'focusin':
             case 'focusout':
                 Object.assign(record, {
-                    target: getUniqueSelector(source.target),
-                    related: getUniqueSelector(source.relatedTarget),
                 });
                 break;
 
@@ -133,7 +125,6 @@ class TrackingCollector extends EventTarget {
                         x: Math.round(source.clientX),
                         y: Math.round(source.clientY),
                         pointerType: source.pointerType,
-                        target: getUniqueSelector(source.target),
                     });
                 }
                 break;
@@ -150,7 +141,6 @@ class TrackingCollector extends EventTarget {
                     code: source.code,
                     key: source.key,
                     modifiers: TrackingCollector.modifiers(source),
-                    target: getUniqueSelector(source.target),
                 });
                 break;
         }
