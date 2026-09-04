@@ -238,6 +238,7 @@
       }
       this.loaded = true;
       this.onLoad();
+      this.dispatchEvent(new CustomEvent("load"));
     }
     unload() {
       if (!this.loaded) {
@@ -245,6 +246,7 @@
       }
       this.loaded = false;
       this.onUnload();
+      this.dispatchEvent(new CustomEvent("unload"));
     }
     onLoad() {
     }
@@ -655,30 +657,10 @@
     }
   };
 
-  // src/page/practice-kana/kana-game.js
-  var KanaGame = class extends EventTarget {
+  // src/page/practice-kana/practice-kana-game-page.js
+  var PracticeKanaGamePage = class extends SubPage {
     constructor() {
-      super();
-      this.started = false;
-      this.onCheck = () => this.check();
-    }
-    start() {
-      observer.addEventListener("mutation", this.onCheck);
-    }
-    stop() {
-      observer.removeEventListener("mutation", this.onCheck);
-    }
-    check() {
-      if (document.querySelector("[active-system]") !== null) {
-        this.started = true;
-        return;
-      }
-      if (!this.started) {
-        return;
-      }
-      this.started = false;
-      this.stop();
-      this.dispatchEvent(new CustomEvent("end"));
+      super("[active-system]");
     }
   };
 
@@ -687,17 +669,8 @@
     constructor() {
       super(".kana-practice-page");
       this.hiddenStyles = new HiddenStyles();
-      this.kanaGame = null;
       this.setupPage = new PracticeKanaSetupPage();
-      this.setupPage.addEventListener("start", () => this.start());
-    }
-    start() {
-      this.kanaGame = new KanaGame();
-      this.kanaGame.addEventListener("end", () => this.end());
-      this.kanaGame.start();
-    }
-    end() {
-      this.kanaGame = null;
+      this.gamePage = new PracticeKanaGamePage();
     }
     onLoad() {
       this.reference.addClass(NO_ANIMATIONS_CLASS);
@@ -705,9 +678,6 @@
       this.hiddenStyles.add(".animate-subtle-bounce");
     }
     onUnload() {
-      this.kanaGame?.stop();
-      this.kanaGame = null;
-      this.setupPage.unload();
       this.reference.removeClass(NO_ANIMATIONS_CLASS);
       this.hiddenStyles.clear();
     }

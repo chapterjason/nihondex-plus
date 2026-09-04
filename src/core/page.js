@@ -30,6 +30,8 @@ export class Page extends EventTarget {
         this.loaded = true;
 
         this.onLoad();
+
+        this.dispatchEvent(new CustomEvent('load'));
     }
 
     unload() {
@@ -40,6 +42,8 @@ export class Page extends EventTarget {
         this.loaded = false;
 
         this.onUnload();
+
+        this.dispatchEvent(new CustomEvent('unload'));
     }
 
     onLoad() {
