@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.8
+// @version      1.0.9
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -126,7 +126,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.8"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.9"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -882,6 +882,17 @@
       const custom = _TrackingProcessor.custom(records);
       return custom.length === 0 ? entry : { ...entry, custom };
     }
+    static DERIVED = [
+      "movement",
+      "typing",
+      "answer"
+    ];
+    static order(entry) {
+      return _TrackingProcessor.DERIVED.includes(entry.type) ? 1 : 0;
+    }
+    static compare(a, b) {
+      return a.time - b.time || _TrackingProcessor.order(a) - _TrackingProcessor.order(b);
+    }
     static INPUTS = [
       "click",
       "keydown"
@@ -913,7 +924,7 @@
         ...this.visibility(),
         ...this.answers(),
         ...this.select("start", "end", "click", ..._TrackingProcessor.BOUNDARIES, "focusin", "focusout")
-      ].sort((a, b) => a.time - b.time);
+      ].sort(_TrackingProcessor.compare);
     }
     answers() {
       const inputs = this.select(..._TrackingProcessor.INPUTS);

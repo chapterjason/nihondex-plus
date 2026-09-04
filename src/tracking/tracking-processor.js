@@ -29,6 +29,20 @@ export class TrackingProcessor {
         return custom.length === 0 ? entry : { ...entry, custom };
     }
 
+    static DERIVED = [
+        'movement',
+        'typing',
+        'answer',
+    ];
+
+    static order(entry) {
+        return TrackingProcessor.DERIVED.includes(entry.type) ? 1 : 0;
+    }
+
+    static compare(a, b) {
+        return a.time - b.time || TrackingProcessor.order(a) - TrackingProcessor.order(b);
+    }
+
     static INPUTS = [
         'click',
         'keydown',
@@ -69,7 +83,7 @@ export class TrackingProcessor {
             ...this.visibility(),
             ...this.answers(),
             ...this.select('start', 'end', 'click', ...TrackingProcessor.BOUNDARIES, 'focusin', 'focusout'),
-        ].sort((a, b) => a.time - b.time);
+        ].sort(TrackingProcessor.compare);
     }
 
     answers() {
