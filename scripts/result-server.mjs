@@ -3,6 +3,8 @@ import {mkdirSync, readdirSync, statSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 
 const PORT = Number(process.env.PORT ?? 3001);
+
+const HOSTS = ['127.0.0.1', '::1'];
 const DIRECTORY = join(process.cwd(), 'results');
 
 const CORS = {
@@ -10,6 +12,7 @@ const CORS = {
     'access-control-allow-methods': 'GET, POST, OPTIONS',
     'access-control-allow-headers': 'content-type',
     'access-control-max-age': '86400',
+    'access-control-allow-private-network': 'true',
 };
 
 mkdirSync(DIRECTORY, {recursive: true});
@@ -25,7 +28,7 @@ function listResults() {
         .sort((a, b) => b.modified.localeCompare(a.modified));
 }
 
-const server = createServer((request, response) => {
+function handle(request, response) {
     const url = new URL(request.url, `http://${request.headers.host}`);
 
     if (request.method === 'OPTIONS') {
@@ -62,9 +65,11 @@ const server = createServer((request, response) => {
     }
 
     response.writeHead(404, CORS).end('not found');
-});
+}
 
-server.listen(PORT, '127.0.0.1', () => {
-    console.log(`nihondex-plus results: http://localhost:${PORT}`);
-    console.log(`writing to ${DIRECTORY}`);
-});
+for (const host of HOSTS) {
+    createServer(handle).listen(PORT, host);
+}
+
+console.log(`nihondex-plus results: http://localhost:${PORT}`);
+console.log(`writing to ${DIRECTORY}`);

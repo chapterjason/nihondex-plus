@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.14
+// @version      1.0.15
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
 // @match        https://nihondex.com/*
 // @run-at       document-idle
-// @inject-into  page
-// @grant        none
+// @connect      localhost
+// @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
 // Limit: a question starts when the new card shows up in the DOM, roughly
@@ -126,7 +126,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.14"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.15"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -1447,16 +1447,18 @@
       this.trackings = [];
       this.startedAt = null;
       this.session = null;
-      console.log({
-        session,
-        started: stamp(startedAt),
-        finished: stamp(finishedAt),
-        score: result.score,
-        duration: result.duration,
-        streak: result.streak,
-        incorrect: result.incorrect,
-        results
-      });
+      this.dispatchEvent(new CustomEvent("session", {
+        detail: {
+          session,
+          started: stamp(startedAt),
+          finished: stamp(finishedAt),
+          score: result.score,
+          duration: result.duration,
+          streak: result.streak,
+          incorrect: result.incorrect,
+          results
+        }
+      }));
     }
     onLoad() {
       this.reference.addClass(NO_ANIMATIONS_CLASS);
@@ -1469,12 +1471,233 @@
     }
   };
 
+  // src/ui/ui-input.js
+  var UiInput = class extends UiElement {
+    constructor(label, value, action) {
+      super();
+      this.input = this.element.lastElementChild;
+      this.element.firstElementChild.innerText = label;
+      this.input.value = value;
+      this.input.addEventListener("change", () => action(this.input.value));
+    }
+    render() {
+      const control = document.createElement("label");
+      control.classList.add("form-control", "flex", "flex-col", "gap-1");
+      const text = document.createElement("span");
+      text.classList.add("text-xs");
+      const input = document.createElement("input");
+      input.classList.add("input", "input-xs", "input-bordered");
+      input.type = "text";
+      control.append(text, input);
+      return control;
+    }
+    enable() {
+      this.element.classList.remove("opacity-50");
+      this.input.disabled = false;
+    }
+    disable() {
+      this.element.classList.add("opacity-50");
+      this.input.disabled = true;
+    }
+  };
+
+  // src/ui/ui-modal.js
+  var UiModal = class extends UiElement {
+    constructor(label) {
+      super();
+      this.children = [];
+      this.box = this.element.firstElementChild;
+      this.content = this.box.children[1];
+      this.box.firstElementChild.innerText = label;
+    }
+    render() {
+      const dialog = document.createElement("dialog");
+      dialog.classList.add("modal");
+      const box = document.createElement("div");
+      box.classList.add("modal-box", "flex", "flex-col", "gap-2");
+      const title = document.createElement("h3");
+      title.classList.add("text-sm", "font-bold");
+      const form = document.createElement("form");
+      form.method = "dialog";
+      form.classList.add("modal-backdrop");
+      const close = document.createElement("button");
+      close.innerText = "Close";
+      close.classList.add("btn", "btn-xs");
+      const content = document.createElement("div");
+      content.classList.add("flex", "flex-col", "gap-2");
+      box.append(title, content, form);
+      form.append(close);
+      dialog.append(box);
+      return dialog;
+    }
+    add(child) {
+      this.children.push(child);
+      child.mount(this.content);
+    }
+    remove(child) {
+      this.children = this.children.filter((stored) => stored !== child);
+      child.unmount();
+    }
+    open() {
+      this.element.showModal();
+    }
+    close() {
+      this.element.close();
+    }
+  };
+
+  // src/ui/ui-checkbox.js
+  var UiCheckbox = class extends UiElement {
+    constructor(label, value, action) {
+      super();
+      this.input = this.element.firstElementChild;
+      this.element.lastElementChild.innerText = label;
+      this.input.checked = value;
+      this.input.addEventListener("change", () => action(this.input.checked));
+    }
+    render() {
+      const control = document.createElement("label");
+      control.classList.add("label", "cursor-pointer", "flex", "flex-row", "gap-2", "justify-start");
+      const input = document.createElement("input");
+      input.classList.add("checkbox", "checkbox-xs");
+      input.type = "checkbox";
+      const text = document.createElement("span");
+      text.classList.add("text-xs");
+      control.append(input, text);
+      return control;
+    }
+  };
+
+  // src/ui/ui-textarea.js
+  var UiTextarea = class extends UiElement {
+    constructor(label, rows = 12) {
+      super();
+      this.textarea = this.element.lastElementChild;
+      this.element.firstElementChild.innerText = label;
+      this.textarea.rows = rows;
+    }
+    render() {
+      const control = document.createElement("label");
+      control.classList.add("form-control", "flex", "flex-col", "gap-1");
+      const text = document.createElement("span");
+      text.classList.add("text-xs");
+      const textarea = document.createElement("textarea");
+      textarea.classList.add("textarea", "textarea-xs", "textarea-bordered", "font-mono");
+      textarea.readOnly = true;
+      control.append(text, textarea);
+      return control;
+    }
+    set(value) {
+      this.textarea.value = value;
+    }
+    select() {
+      this.textarea.select();
+    }
+  };
+
+  // src/util/settings.js
+  var KEY = "nihondex-plus";
+  var Settings = class _Settings {
+    constructor() {
+      this.values = _Settings.load();
+    }
+    static load() {
+      const stored = localStorage.getItem(KEY);
+      if (stored === null) {
+        return {};
+      }
+      try {
+        return JSON.parse(stored);
+      } catch {
+        return {};
+      }
+    }
+    get(name, fallback) {
+      return this.values[name] ?? fallback;
+    }
+    set(name, value) {
+      this.values[name] = value;
+      localStorage.setItem(KEY, JSON.stringify(this.values));
+    }
+  };
+  var settings = new Settings();
+
+  // src/util/post.js
+  function post(url, payload) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "POST",
+        url,
+        headers: { "content-type": "application/json" },
+        data: JSON.stringify(payload),
+        onload: (response) => {
+          if (response.status >= 200 && response.status < 300) {
+            resolve(response);
+            return;
+          }
+          reject(new Error(`${response.status} ${response.statusText}`));
+        },
+        onerror: () => reject(new Error("request failed")),
+        ontimeout: () => reject(new Error("request timed out"))
+      });
+    });
+  }
+
+  // src/settings.js
+  var SERVER = {
+    name: "server",
+    label: "Use result server",
+    value: false
+  };
+  var RESULTS = {
+    name: "results",
+    label: "Result server",
+    value: "http://localhost:3001/results"
+  };
+
   // src/main.js
+  function toggle(element, enabled) {
+    if (enabled) {
+      element.enable();
+      return;
+    }
+    element.disable();
+  }
+  async function onSession(session, output, results) {
+    if (settings.get(SERVER.name, SERVER.value)) {
+      await post(settings.get(RESULTS.name, RESULTS.value), session);
+      return;
+    }
+    output.set(JSON.stringify(session, null, 4));
+    results.open();
+    output.select();
+  }
   async function main() {
     disableAnimations();
     panel.mount(document.body);
+    const modal = new UiModal("Settings");
+    const server = settings.get(SERVER.name, SERVER.value);
+    const url = new UiInput(
+      RESULTS.label,
+      settings.get(RESULTS.name, RESULTS.value),
+      (value) => settings.set(RESULTS.name, value)
+    );
+    modal.add(new UiCheckbox(SERVER.label, server, (value) => {
+      settings.set(SERVER.name, value);
+      toggle(url, value);
+    }));
+    modal.add(url);
+    toggle(url, server);
+    modal.mount(document.body);
+    panel.add(new UiButton("Settings", () => modal.open()));
+    const output = new UiTextarea("Session");
+    const results = new UiModal("Results");
+    results.add(output);
+    results.mount(document.body);
+    const page = new PracticeKanaPage();
+    page.addEventListener("session", (event) => onSession(event.detail, output, results));
     const router = new Router();
-    router.add("/practice/kana", new PracticeKanaPage());
+    router.add("/practice/kana", page);
     router.start();
   }
   (() => {

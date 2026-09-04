@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.14
+// @version      1.0.15
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
 // @match        https://nihondex.com/*
 // @run-at       document-idle
-// @inject-into  page
-// @grant        none
+// @connect      localhost
+// @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
 // Limit: a question starts when the new card shows up in the DOM, roughly

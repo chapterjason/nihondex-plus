@@ -48,16 +48,18 @@ export class PracticeKanaPage extends Page {
         this.startedAt = null;
         this.session = null;
 
-        console.log({
-            session,
-            started: stamp(startedAt),
-            finished: stamp(finishedAt),
-            score: result.score,
-            duration: result.duration,
-            streak: result.streak,
-            incorrect: result.incorrect,
-            results,
-        });
+        this.dispatchEvent(new CustomEvent('session', {
+            detail: {
+                session,
+                started: stamp(startedAt),
+                finished: stamp(finishedAt),
+                score: result.score,
+                duration: result.duration,
+                streak: result.streak,
+                incorrect: result.incorrect,
+                results,
+            },
+        }));
     }
 
     onLoad() {
