@@ -382,6 +382,32 @@ function* kanaRowMatrix() {
     }
 }
 
+function disableAnimations() {
+    const style = document.createElement('style');
+
+    style.id = 'nihondex-plus-no-animations';
+    style.textContent = `
+        .kana-practice-page,
+        .kana-practice-page *,
+        .kana-practice-page *::before,
+        .kana-practice-page *::after {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        .animate-subtle-bounce,
+        canvas[data-confetti] {
+            display: none !important;
+        }
+    `;
+
+    document.head.append(style);
+}
+
+function enableAnimations() {
+    document.getElementById('nihondex-plus-no-animations')?.remove();
+}
+
 function onStartPractice(event) {
     if (event.target.closest('button[data-walkthrough="kana-start"]') === null) {
         return;
@@ -392,6 +418,8 @@ function onStartPractice(event) {
 }
 
 function loadPracticeKana() {
+    disableAnimations();
+
     document.addEventListener('click', onStartPractice, {capture: true, passive: true});
 
     const modeDrawKanaButton = new ButtonElementReference('button[data-tip="Draw Kana"]');
@@ -481,6 +509,8 @@ function unloadPracticeKana() {
     BUTTON_STORE.length = 0;
 
     document.removeEventListener('click', onStartPractice, {capture: true});
+
+    enableAnimations();
 
     kanaGame?.stop();
     kanaGame = null;
