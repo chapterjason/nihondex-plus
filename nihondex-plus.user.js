@@ -466,6 +466,8 @@ function unloadPracticeKana() {
 
         button.remove()
     }
+
+    BUTTON_STORE.length = 0;
 }
 
 async function main() {
@@ -481,20 +483,23 @@ async function main() {
         }
     }
 
-    // how to detect navigation?
-    window.history.pushState = new Proxy(window.history.pushState, {
-        apply: (target, thisArg, argArray) => {
-            const [,, urlArg] = argArray;
+    for (const method of ['pushState', 'replaceState']) {
+        window.history[method] = new Proxy(window.history[method], {
+            apply: (target, thisArg, argArray) => {
+                const result = target.apply(thisArg, argArray);
 
-            if (typeof urlArg === 'string') {
-                onNavigation(new URL(urlArg, window.location.origin));
-            }
+                onNavigation(new URL(window.location.href));
 
-            return target.apply(thisArg, argArray);
-        },
+                return result;
+            },
+        });
+    }
+
+    window.addEventListener('popstate', () => {
+        onNavigation(new URL(window.location.href));
     });
 
-    onNavigation(window.location);
+    onNavigation(new URL(window.location.href));
 }
 
 (() => {
