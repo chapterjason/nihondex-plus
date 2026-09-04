@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.7
+// @version      1.0.8
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -10,6 +10,10 @@
 // @inject-into  page
 // @grant        none
 // ==/UserScript==
+
+// Limit: a question starts when the new card shows up in the DOM, roughly
+// 40-80ms after it really appeared. Answer times are taken from the actual
+// click or keypress, start times cannot be. Measured times run a bit short.
 (() => {
   // src/core/router.js
   var Router = class {
@@ -122,7 +126,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.7"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.8"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
