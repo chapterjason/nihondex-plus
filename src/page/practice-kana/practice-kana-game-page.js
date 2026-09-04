@@ -2,6 +2,7 @@ import {SubPage} from '../../core/sub-page.js';
 import {InputTracker} from '../../tracking/input-tracker.js';
 import {TrackingCollector} from '../../tracking/tracking-collector.js';
 import {TrackingProcessor} from '../../tracking/tracking-processor.js';
+import {absolute} from '../../util/absolute.js';
 
 export const GAME_MODE_SELECT_ROMAJI = 'selectRomanji';
 
@@ -157,9 +158,13 @@ export class PracticeKanaGamePage extends SubPage {
         }
 
         const card = this.tracked;
+        const started = absolute(this.collector.startTime);
         const log = this.collector.stop();
+        const finished = absolute(this.collector.endTime);
 
         const tracking = {
+            started,
+            finished,
             gameMode: this.gameMode,
             success: card === null ? false : this.getSuccess(card),
             retries: this.retries,

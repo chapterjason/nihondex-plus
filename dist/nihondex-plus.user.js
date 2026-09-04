@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         nihondex-plus
 // @namespace    chapterjason
-// @version      1.0.3
+// @version      1.0.4
 // @author       chapterjason
 // @homepageURL  https://github.com/chapterjason/nihondex-plus
 // @supportURL   https://github.com/chapterjason/nihondex-plus/issues
@@ -122,7 +122,7 @@
   };
 
   // src/ui/panel.js
-  var panel = new UiPanel(`Nihondex Plus v${"1.0.3"}`);
+  var panel = new UiPanel(`Nihondex Plus v${"1.0.4"}`);
 
   // src/core/dom-observer.js
   var DomObserver = class extends EventTarget {
@@ -736,17 +736,19 @@
       this.tracker = tracker;
       this.log = [];
       this.startTime = null;
+      this.endTime = null;
       this.handler = (event) => this.log.push(...this.lines(event.detail));
     }
     isRunning() {
       return this.startTime !== null;
     }
-    start(time = performance.now()) {
+    start(time2 = performance.now()) {
       if (this.isRunning()) {
         return;
       }
       this.log = [];
-      this.startTime = time;
+      this.startTime = time2;
+      this.endTime = null;
       this.log.push(this.line("start", this.startTime, this.tracker.pointer));
       this.tracker.addEventListener("tracking", this.handler);
     }
@@ -755,11 +757,12 @@
         return this.log;
       }
       this.tracker.removeEventListener("tracking", this.handler);
-      this.log.push(this.line("end", performance.now(), this.tracker.pointer));
+      this.endTime = performance.now();
+      this.log.push(this.line("end", this.endTime, this.tracker.pointer));
       this.startTime = null;
       return this.log;
     }
-    lines({ type, time, source }) {
+    lines({ type, time: time2, source }) {
       if (type === "pointermove") {
         const samples = source.getCoalescedEvents();
         const fresh = samples.filter((sample) => sample.timeStamp >= this.startTime);
@@ -767,11 +770,11 @@
           return fresh.map((sample) => this.line(type, sample.timeStamp, sample));
         }
       }
-      return [this.line(type, time, source)];
+      return [this.line(type, time2, source)];
     }
-    line(type, time, source) {
+    line(type, time2, source) {
       const record = {
-        time: Math.round(time - this.startTime),
+        time: Math.round(time2 - this.startTime),
         type
       };
       switch (type) {
@@ -837,7 +840,7 @@
           break;
       }
       this.dispatchEvent(new CustomEvent("line", {
-        detail: { type, time, source, record }
+        detail: { type, time: time2, source, record }
       }));
       return JSON.stringify(record);
     }
@@ -862,7 +865,7 @@
       "state"
     ];
     static custom(records) {
-      return records.map((record) => Object.entries(record).filter(([field]) => !_TrackingProcessor.FIELDS.includes(field))).map((entries, index) => [records[index].time, entries]).filter(([, entries]) => entries.length > 0).map(([time, entries]) => Object.fromEntries([["time", time], ...entries]));
+      return records.map((record) => Object.entries(record).filter(([field]) => !_TrackingProcessor.FIELDS.includes(field))).map((entries, index) => [records[index].time, entries]).filter(([, entries]) => entries.length > 0).map(([time2, entries]) => Object.fromEntries([["time", time2], ...entries]));
     }
     static withCustom(entry, records) {
       const custom = _TrackingProcessor.custom(records);
@@ -1100,6 +1103,33 @@
     }
   };
 
+  // src/util/date.js
+  function date(value = /* @__PURE__ */ new Date()) {
+    const year = String(value.getFullYear()).padStart(4, "0");
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  // src/util/time.js
+  function time(value = /* @__PURE__ */ new Date()) {
+    const hours = String(value.getHours()).padStart(2, "0");
+    const minutes = String(value.getMinutes()).padStart(2, "0");
+    const seconds = String(value.getSeconds()).padStart(2, "0");
+    return `${hours}:${minutes}:${seconds}`;
+  }
+
+  // src/util/stamp.js
+  function stamp(value = /* @__PURE__ */ new Date()) {
+    const milliseconds = String(value.getMilliseconds()).padStart(3, "0");
+    return `${date(value)} ${time(value)}.${milliseconds}`;
+  }
+
+  // src/util/absolute.js
+  function absolute(elapsed) {
+    return stamp(new Date(performance.timeOrigin + elapsed));
+  }
+
   // src/page/practice-kana/practice-kana-game-page.js
   var GAME_MODE_SELECT_ROMAJI = "selectRomanji";
   var GAME_MODE_SELECT_KANA = "selectKana";
@@ -1204,8 +1234,12 @@
         return;
       }
       const card = this.tracked;
+      const started = absolute(this.collector.startTime);
       const log = this.collector.stop();
+      const finished = absolute(this.collector.endTime);
       const tracking = {
+        started,
+        finished,
         gameMode: this.gameMode,
         success: card === null ? false : this.getSuccess(card),
         retries: this.retries,
@@ -1299,19 +1333,31 @@
       this.gamePage = new PracticeKanaGamePage();
       this.resultPage = new PracticeKanaResultPage();
       this.trackings = [];
+      this.startedAt = null;
+      this.setupPage.addEventListener("start", () => this.onStart());
       this.gamePage.addEventListener("tracking", (event) => this.onTracking(event.detail));
       this.resultPage.addEventListener("result", (event) => this.onResult(event.detail));
+    }
+    onStart() {
+      this.startedAt = /* @__PURE__ */ new Date();
     }
     onTracking(trackings) {
       this.trackings = trackings;
     }
     onResult(result) {
+      const finishedAt = /* @__PURE__ */ new Date();
+      const startedAt = this.startedAt ?? finishedAt;
       const results = this.trackings.map((tracking, index) => ({
         ...tracking,
         nihondex: result.results[index]
       }));
       this.trackings = [];
-      console.log(results);
+      this.startedAt = null;
+      console.log({
+        started: stamp(startedAt),
+        finished: stamp(finishedAt),
+        results
+      });
     }
     onLoad() {
       this.reference.addClass(NO_ANIMATIONS_CLASS);

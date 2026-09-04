@@ -4,6 +4,7 @@ import {NO_ANIMATIONS_CLASS} from '../../util/disable-animations.js';
 import {HiddenStyles} from '../../util/hidden-styles.js';
 import {PracticeKanaGamePage} from './practice-kana-game-page.js';
 import {PracticeKanaResultPage} from './practice-kana-result-page.js';
+import {stamp} from '../../util/stamp.js';
 
 export class PracticeKanaPage extends Page {
     constructor() {
@@ -15,9 +16,15 @@ export class PracticeKanaPage extends Page {
         this.resultPage = new PracticeKanaResultPage();
 
         this.trackings = [];
+        this.startedAt = null;
 
+        this.setupPage.addEventListener('start', () => this.onStart());
         this.gamePage.addEventListener('tracking', (event) => this.onTracking(event.detail));
         this.resultPage.addEventListener('result', (event) => this.onResult(event.detail));
+    }
+
+    onStart() {
+        this.startedAt = new Date();
     }
 
     onTracking(trackings) {
@@ -25,14 +32,22 @@ export class PracticeKanaPage extends Page {
     }
 
     onResult(result) {
+        const finishedAt = new Date();
+        const startedAt = this.startedAt ?? finishedAt;
+
         const results = this.trackings.map((tracking, index) => ({
             ...tracking,
             nihondex: result.results[index],
         }));
 
         this.trackings = [];
+        this.startedAt = null;
 
-        console.log(results);
+        console.log({
+            started: stamp(startedAt),
+            finished: stamp(finishedAt),
+            results,
+        });
     }
 
     onLoad() {

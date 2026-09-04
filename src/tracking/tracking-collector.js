@@ -24,6 +24,7 @@ export class TrackingCollector extends EventTarget {
         this.tracker = tracker;
         this.log = [];
         this.startTime = null;
+        this.endTime = null;
         this.handler = (event) => this.log.push(...this.lines(event.detail));
     }
 
@@ -38,6 +39,7 @@ export class TrackingCollector extends EventTarget {
 
         this.log = [];
         this.startTime = time;
+        this.endTime = null;
         this.log.push(this.line('start', this.startTime, this.tracker.pointer));
         this.tracker.addEventListener('tracking', this.handler);
     }
@@ -48,7 +50,8 @@ export class TrackingCollector extends EventTarget {
         }
 
         this.tracker.removeEventListener('tracking', this.handler);
-        this.log.push(this.line('end', performance.now(), this.tracker.pointer));
+        this.endTime = performance.now();
+        this.log.push(this.line('end', this.endTime, this.tracker.pointer));
         this.startTime = null;
 
         return this.log;
