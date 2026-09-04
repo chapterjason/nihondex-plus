@@ -1,0 +1,19 @@
+{
+  "name": "nihondex-plus",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chapterjason/nihondex-plus.git"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "server": "node scripts/server.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
