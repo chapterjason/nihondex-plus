@@ -625,6 +625,10 @@
             transition: none !important;
             animation: none !important;
         }
+
+        .animate-fade-in {
+            opacity: 1 !important;
+        }
     `;
     document.head.append(style);
   }
@@ -657,16 +661,468 @@
     }
   };
 
+  // src/tracking/input-tracker.js
+  var EVENTS = [
+    "keydown",
+    "keyup",
+    "compositionstart",
+    "compositionupdate",
+    "compositionend",
+    "focusin",
+    "focusout",
+    "click",
+    "pointermove",
+    "pointerdown",
+    "pointerup",
+    "pointercancel",
+    "pointerenter",
+    "pointerleave",
+    "visibilitychange"
+  ];
+  var POINTER_STATE = [
+    "pointermove",
+    "pointerdown",
+    "pointerup",
+    "pointerenter"
+  ];
+  var DOCUMENT_ONLY = [
+    "pointerenter",
+    "pointerleave"
+  ];
+  var InputTracker = class extends EventTarget {
+    constructor() {
+      super();
+      this.pointer = null;
+      for (const type of EVENTS) {
+        document.addEventListener(type, (event) => {
+          if (DOCUMENT_ONLY.includes(type) && event.target !== document.documentElement) {
+            return;
+          }
+          if (POINTER_STATE.includes(type)) {
+            this.pointer = event;
+          }
+          this.dispatchEvent(new CustomEvent("tracking", {
+            detail: {
+              type,
+              time: event.timeStamp,
+              source: event
+            }
+          }));
+        }, {
+          capture: true,
+          passive: true
+        });
+      }
+    }
+  };
+
+  // src/tracking/tracking-collector.js
+  var TrackingCollector = class _TrackingCollector extends EventTarget {
+    static BUTTONS = ["left", "middle", "right"];
+    static MODIFIERS = [
+      ["ctrlKey", "ctrl"],
+      ["altKey", "alt"],
+      ["shiftKey", "shift"],
+      ["metaKey", "meta"]
+    ];
+    static button(event) {
+      return _TrackingCollector.BUTTONS[event.button] ?? String(event.button);
+    }
+    static modifiers(event) {
+      return _TrackingCollector.MODIFIERS.filter(([property]) => event[property]).map(([, name]) => name);
+    }
+    constructor(tracker) {
+      super();
+      this.tracker = tracker;
+      this.log = [];
+      this.startTime = null;
+      this.handler = (event) => this.log.push(...this.lines(event.detail));
+    }
+    isRunning() {
+      return this.startTime !== null;
+    }
+    start(time = performance.now()) {
+      if (this.isRunning()) {
+        return;
+      }
+      this.log = [];
+      this.startTime = time;
+      this.log.push(this.line("start", this.startTime, this.tracker.pointer));
+      this.tracker.addEventListener("tracking", this.handler);
+    }
+    stop() {
+      if (!this.isRunning()) {
+        return this.log;
+      }
+      this.tracker.removeEventListener("tracking", this.handler);
+      this.log.push(this.line("end", performance.now(), this.tracker.pointer));
+      this.startTime = null;
+      return this.log;
+    }
+    lines({ type, time, source }) {
+      if (type === "pointermove") {
+        const samples = source.getCoalescedEvents();
+        const fresh = samples.filter((sample) => sample.timeStamp >= this.startTime);
+        if (fresh.length > 0) {
+          return fresh.map((sample) => this.line(type, sample.timeStamp, sample));
+        }
+      }
+      return [this.line(type, time, source)];
+    }
+    line(type, time, source) {
+      const record = {
+        time: Math.round(time - this.startTime),
+        type
+      };
+      switch (type) {
+        case "click":
+          Object.assign(record, {
+            x: Math.round(source.clientX),
+            y: Math.round(source.clientY),
+            button: _TrackingCollector.button(source)
+          });
+          break;
+        case "pointermove":
+        case "pointercancel":
+        case "pointerenter":
+        case "pointerleave":
+          Object.assign(record, {
+            x: Math.round(source.clientX),
+            y: Math.round(source.clientY),
+            pointerType: source.pointerType
+          });
+          break;
+        case "pointerdown":
+        case "pointerup":
+          Object.assign(record, {
+            x: Math.round(source.clientX),
+            y: Math.round(source.clientY),
+            button: _TrackingCollector.button(source),
+            pointerType: source.pointerType
+          });
+          break;
+        case "compositionstart":
+        case "compositionupdate":
+        case "compositionend":
+          Object.assign(record, {
+            data: source.data
+          });
+          break;
+        case "focusin":
+        case "focusout":
+          Object.assign(record, {});
+          break;
+        case "start":
+        case "end":
+          if (source !== null) {
+            Object.assign(record, {
+              x: Math.round(source.clientX),
+              y: Math.round(source.clientY),
+              pointerType: source.pointerType
+            });
+          }
+          break;
+        case "visibilitychange":
+          Object.assign(record, {
+            state: document.visibilityState
+          });
+          break;
+        case "keydown":
+        case "keyup":
+          Object.assign(record, {
+            code: source.code,
+            key: source.key,
+            modifiers: _TrackingCollector.modifiers(source)
+          });
+          break;
+      }
+      this.dispatchEvent(new CustomEvent("line", {
+        detail: { type, time, source, record }
+      }));
+      return JSON.stringify(record);
+    }
+  };
+
+  // src/tracking/tracking-processor.js
+  var TrackingProcessor = class _TrackingProcessor {
+    static MOVEMENT_GAP = 100;
+    static FIELDS = [
+      "time",
+      "type",
+      "x",
+      "y",
+      "button",
+      "pointerType",
+      "target",
+      "related",
+      "code",
+      "key",
+      "modifiers",
+      "data",
+      "state"
+    ];
+    static custom(records) {
+      return records.map((record) => Object.entries(record).filter(([field]) => !_TrackingProcessor.FIELDS.includes(field))).map((entries, index) => [records[index].time, entries]).filter(([, entries]) => entries.length > 0).map(([time, entries]) => Object.fromEntries([["time", time], ...entries]));
+    }
+    static withCustom(entry, records) {
+      const custom = _TrackingProcessor.custom(records);
+      return custom.length === 0 ? entry : { ...entry, custom };
+    }
+    static BOUNDARIES = [
+      "pointerdown",
+      "pointerup",
+      "pointercancel",
+      "pointerenter",
+      "pointerleave"
+    ];
+    static distance(from, to) {
+      return Math.hypot(to.x - from.x, to.y - from.y);
+    }
+    static angleBetween(previous, current) {
+      const delta = current - previous;
+      return Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta)));
+    }
+    constructor(log) {
+      this.records = log.map((line) => JSON.parse(line)).sort((a, b) => a.time - b.time);
+    }
+    select(...types) {
+      return this.records.filter((record) => types.includes(record.type));
+    }
+    process() {
+      return [
+        ...this.movements(),
+        ...this.hovers(),
+        ...this.typing(),
+        ...this.visibility(),
+        ...this.select("start", "end", "click", ..._TrackingProcessor.BOUNDARIES, "focusin", "focusout")
+      ].sort((a, b) => a.time - b.time);
+    }
+    movements() {
+      const groups = [];
+      let current = null;
+      for (const event of this.select("pointermove", ..._TrackingProcessor.BOUNDARIES)) {
+        if (event.type !== "pointermove") {
+          current = null;
+          continue;
+        }
+        if (current === null || event.time - current[current.length - 1].time > _TrackingProcessor.MOVEMENT_GAP) {
+          current = [event];
+          groups.push(current);
+          continue;
+        }
+        current.push(event);
+      }
+      return groups.filter((points) => points.length > 1).map((points) => this.describeMovement(points)).filter((movement) => movement.distance > 0);
+    }
+    describeMovement(points) {
+      const first = points[0];
+      const last = points[points.length - 1];
+      let distance = 0;
+      let peakSpeed = 0;
+      let directionChanges = 0;
+      let previousAngle = null;
+      for (let index = 1; index < points.length; index += 1) {
+        const from = points[index - 1];
+        const to = points[index];
+        const step = _TrackingProcessor.distance(from, to);
+        const elapsed = to.time - from.time;
+        distance += step;
+        if (elapsed > 0) {
+          peakSpeed = Math.max(peakSpeed, step / elapsed);
+        }
+        if (step === 0) {
+          continue;
+        }
+        const angle = Math.atan2(to.y - from.y, to.x - from.x);
+        if (previousAngle !== null && _TrackingProcessor.angleBetween(previousAngle, angle) > Math.PI / 2) {
+          directionChanges += 1;
+        }
+        previousAngle = angle;
+      }
+      const displacement = _TrackingProcessor.distance(first, last);
+      const movement = {
+        time: first.time,
+        type: "movement",
+        end: last.time,
+        duration: last.time - first.time,
+        samples: points.length,
+        from: { x: first.x, y: first.y },
+        to: { x: last.x, y: last.y },
+        distance: Math.round(distance),
+        displacement: Math.round(displacement),
+        efficiency: distance === 0 ? 1 : displacement / distance,
+        peakSpeed,
+        directionChanges,
+        targets: [...new Set(points.map((point) => point.target))]
+      };
+      return _TrackingProcessor.withCustom(movement, points);
+    }
+    hovers() {
+      const groups = [];
+      for (const move of this.select("pointermove")) {
+        const current = groups[groups.length - 1];
+        if (current !== void 0 && current[0].target === move.target) {
+          current.push(move);
+          continue;
+        }
+        groups.push([move]);
+      }
+      return groups.map((points) => {
+        const first = points[0];
+        const last = points[points.length - 1];
+        return _TrackingProcessor.withCustom({
+          time: first.time,
+          type: "hover",
+          end: last.time,
+          duration: last.time - first.time,
+          target: first.target
+        }, points);
+      });
+    }
+    typing() {
+      const events = this.select(
+        "keydown",
+        "keyup",
+        "compositionstart",
+        "compositionupdate",
+        "compositionend",
+        "focusin",
+        "focusout"
+      );
+      const groups = [];
+      let current = null;
+      for (const event of events) {
+        if (event.type === "focusout") {
+          current = null;
+          continue;
+        }
+        if (event.type === "focusin") {
+          current = [];
+          groups.push(current);
+          continue;
+        }
+        if (current === null) {
+          current = [];
+          groups.push(current);
+        }
+        current.push(event);
+      }
+      return groups.filter((group) => group.length > 0).map((group) => this.describeTyping(group));
+    }
+    describeTyping(events) {
+      const characters = [];
+      const intervals = [];
+      const dwells = [];
+      const compositions = [];
+      const pressed = /* @__PURE__ */ new Map();
+      let keys = 0;
+      let backspaces = 0;
+      let previousKeydown = null;
+      let composing = null;
+      for (const event of events) {
+        switch (event.type) {
+          case "keydown":
+            keys += 1;
+            pressed.set(event.code, event.time);
+            if (previousKeydown !== null) {
+              intervals.push(event.time - previousKeydown);
+            }
+            previousKeydown = event.time;
+            if (composing !== null) {
+              break;
+            }
+            if (event.key === "Backspace") {
+              backspaces += 1;
+              characters.pop();
+            } else if ([...event.key].length === 1) {
+              characters.push(event.key);
+            }
+            break;
+          case "keyup": {
+            const down = pressed.get(event.code);
+            if (down !== void 0) {
+              dwells.push(event.time - down);
+              pressed.delete(event.code);
+            }
+            break;
+          }
+          case "compositionstart":
+            composing = { start: event.time, updates: 0, data: "" };
+            break;
+          case "compositionupdate":
+            if (composing !== null) {
+              composing.updates += 1;
+              composing.data = event.data;
+            }
+            break;
+          case "compositionend":
+            if (composing !== null) {
+              composing.end = event.time;
+              composing.duration = event.time - composing.start;
+              composing.data = event.data;
+              compositions.push(composing);
+              composing = null;
+            }
+            characters.push(...event.data);
+            break;
+        }
+      }
+      const first = events[0];
+      const last = events[events.length - 1];
+      const run = {
+        time: first.time,
+        type: "typing",
+        end: last.time,
+        duration: last.time - first.time,
+        target: first.target,
+        text: characters.join(""),
+        keys,
+        backspaces,
+        intervals,
+        dwells,
+        compositions
+      };
+      return _TrackingProcessor.withCustom(run, events);
+    }
+    visibility() {
+      const changes = this.select("visibilitychange");
+      const last = this.records[this.records.length - 1];
+      const end = last === void 0 ? 0 : last.time;
+      return changes.map((change, index) => {
+        const next = changes[index + 1];
+        const until = next === void 0 ? end : next.time;
+        return {
+          ...change,
+          end: until,
+          duration: until - change.time
+        };
+      });
+    }
+  };
+
   // src/page/practice-kana/practice-kana-game-page.js
   var GAME_MODE_SELECT_ROMAJI = "selectRomanji";
   var GAME_MODE_SELECT_KANA = "selectKana";
   var GAME_MODE_TYPE_ROMAJI = "typeRomanji";
   var GAME_MODE_UNKNOWN = "unknown";
   var KANA = /[\u3040-\u30ff]/;
+  var OPTION_SUCCESS_CLASS = "bg-success/40";
+  var OPTION_ERROR_CLASS = "bg-error/40";
+  var FEEDBACK_SELECTOR = ".animate-fly-up";
+  var FEEDBACK_SUCCESS = "✓";
+  var FEEDBACK_ERROR = "✗";
   var PracticeKanaGamePage = class extends SubPage {
     constructor() {
       super("[game-count]");
       this.card = null;
+      this.tracker = new InputTracker();
+      this.collector = new TrackingCollector(this.tracker);
+      this.trackings = [];
+      this.gameMode = null;
+      this.tracked = null;
+      this.answered = false;
+      this.feedback = null;
+      this.retries = 0;
     }
     getGameMode() {
       const card = this.reference.get();
@@ -682,8 +1138,35 @@
       }
       return GAME_MODE_UNKNOWN;
     }
+    checkAnswer() {
+      if (this.answered) {
+        return;
+      }
+      const card = this.reference.get();
+      if (card === null) {
+        return;
+      }
+      const feedback = card.querySelector(FEEDBACK_SELECTOR);
+      if (feedback === this.feedback) {
+        return;
+      }
+      this.feedback = feedback;
+      if (feedback === null) {
+        return;
+      }
+      const mark = feedback.textContent.trim();
+      if (mark === FEEDBACK_SUCCESS) {
+        this.answered = true;
+        this.finish();
+        return;
+      }
+      if (mark === FEEDBACK_ERROR) {
+        this.retries += 1;
+      }
+    }
     check() {
       super.check();
+      this.checkAnswer();
       const card = this.reference.get();
       if (card === this.card) {
         return;
@@ -694,9 +1177,58 @@
       }
       this.onCard(card);
     }
+    getLabel(option) {
+      return option.lastElementChild.textContent.trim();
+    }
+    getPrompt(card) {
+      const display = [...card.querySelectorAll(".kana-display")].find((element) => element.closest("dialog") === null);
+      return display === void 0 ? null : display.textContent.trim();
+    }
+    getOptions(card) {
+      return [...card.querySelectorAll(".kana-option-btn")].map((option) => this.getLabel(option));
+    }
+    getSuccess(card) {
+      const feedback = card.querySelector(FEEDBACK_SELECTOR);
+      if (feedback === null) {
+        return false;
+      }
+      return feedback.textContent.trim() === FEEDBACK_SUCCESS && this.retries === 0;
+    }
+    getChosen(card) {
+      const options = [...card.querySelectorAll(".kana-option-btn")];
+      const chosen = options.find((option) => option.classList.contains(OPTION_ERROR_CLASS)) ?? options.find((option) => option.classList.contains(OPTION_SUCCESS_CLASS));
+      return chosen === void 0 ? null : this.getLabel(chosen);
+    }
+    finish() {
+      if (!this.collector.isRunning()) {
+        return;
+      }
+      const card = this.tracked;
+      const log = this.collector.stop();
+      const tracking = {
+        gameMode: this.gameMode,
+        success: card === null ? false : this.getSuccess(card),
+        retries: this.retries,
+        prompt: card === null ? null : this.getPrompt(card),
+        options: card === null ? [] : this.getOptions(card),
+        chosen: card === null ? null : this.getChosen(card),
+        log,
+        processed: new TrackingProcessor(log).process()
+      };
+      this.trackings.push(tracking);
+      this.dispatchEvent(new CustomEvent("tracking", { detail: tracking }));
+    }
     onCard(card) {
-      const gameMode = this.getGameMode();
-      console.log(gameMode);
+      this.finish();
+      this.answered = false;
+      this.feedback = null;
+      this.retries = 0;
+      this.tracked = card;
+      this.gameMode = this.getGameMode();
+      this.collector.start();
+    }
+    onUnload() {
+      this.finish();
     }
   };
 
